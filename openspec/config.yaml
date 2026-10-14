@@ -1,0 +1,114 @@
+schema: spec-driven
+
+# Este bloque se le inyecta a la IA al crear artefactos. Es el UNICO lugar
+# donde existen nombres de libreria: los specs en `specs/` son neutrales de
+# stack a proposito.
+context: |
+  QUE ES
+    Un harness de coding agent: el programa que le da a un LLM las capacidades
+    que el modelo no tiene. Lee archivos, ejecuta herramientas, gestiona el
+    contexto y se cancela a mitad de tarea.
+    El modelo es el motor. El harness es el chasis.
+
+  ALCANCE DE LA v1: niveles 0 al 2
+    0  One-shot. Una llamada al provider. Descarta problemas falsos.
+    1  El loop y las herramientas.
+    2  Gestion de contexto: presupuesto, recorte, compactacion.
+    Fuera de alcance: subagentes, aprobaciones, sesiones persistentes, agentes
+    nombrados, permisos, hooks, sandbox, LSP, MCP, memoria.
+    La escalera completa esta documentada en `alcance/`, que es referencia de
+    razonamiento y no contrato. El contrato vive en `openspec/specs/`.
+
+  STACK DECIDIDO
+    Node 24, ESM, TypeScript strict con `noUncheckedIndexedAccess`.
+    Ink 7.1.1 con React 19 para la interfaz de terminal.
+    Biome para lint y formato. Vitest para pruebas.
+    Sin base de datos en ningun nivel. El estado vive en memoria durante el
+    turno; cuando aparezca persistencia sera JSONL en `.harness/`.
+
+  PLATAFORMAS: Linux, macOS y Windows
+    Las tres se prueban en CI. En Windows la interfaz degrada a salida linea a
+    linea cuando no hay terminal interactiva, porque Ink tiene fallos de render
+    especificos de esa consola.
+
+  LOS SPECS SON NEUTRALES DE STACK A PROPOSITO
+    No mencionan lenguajes, frameworks, nombres de archivo ni tablas. El stack
+    vive unicamente aqui. La regla: si un requisito necesita nombrar una
+    libreria o un algoritmo, esta mal escrito.
+
+  CONVENCIONES DE LOS SPECS
+    Carpetas en ingles: core, provider, tools, context, interface.
+    Texto de los requisitos en espanol. Los marcadores estructurales van en
+    ingles porque el CLI los parsea: `## Purpose`, `## Requirements`,
+    `### Requirement:`, `#### Scenario:`. Las palabras clave tambien:
+    SHALL, MUST, WHEN, THEN, AND.
+    Cada requisito SHALL contener SHALL o MUST, y SHALL tener al menos un
+    escenario con cuerpo. Un escenario sin cuerpo bajo su encabezado no cuenta.
+
+  CATALOGO Y LISTA NEGRA DE COMANDOS
+    La herramienta de ejecucion no corre un binario cualquiera: corre contra el
+    catalogo de la plataforma activa, y cada plataforma declara el suyo.
+
+    Encima del catalogo hay una lista negra por plataforma: comandos que existen y
+    que el harness NO ejecuta. El bloqueo ocurre en el harness, antes de invocar el
+    shell. El sistema operativo no participa y no sabe que la lista existe.
+    El rechazo devuelve un mensaje al modelo COMO TEXTO, no como excepcion, para
+    que elija otra alternativa en el siguiente paso.
+
+    La lista negra bloquea el NOMBRE COMPLETO del comando, nunca combinaciones de
+    flags. Una cadena como `rm -rf` es evadible: `rm -fr`, `rm -r -f`, `rm -f -r` y
+    `rm --recursive --force` producen el mismo borrado. Verificado en GNU
+    coreutils 9.7.
+
+    LA EJECUCION NO ESTA DISPONIBLE EN WINDOWS en la v1. En PowerShell, borrar es
+    nueve nombres distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y ademas
+    se puede llamar como metodo .NET. Una lista negra por nombre no aguanta eso.
+    En vez de prometer una garantia que el mecanismo no sostiene, la v1 no expone
+    la herramienta. En Windows el agente lee, busca, escribe y edita.
+
+    UNIX, bloqueados: rm, rmdir, unlink, shred, mkfs, dd, chmod, chown, chgrp,
+    sudo, su, doas, mount, umount, kill, killall, pkill, shutdown, reboot, halt,
+    poweroff.
+
+    `write` sigue disponible en la v1: el agente puede sobrescribir un archivo del
+    proyecto. Es una decision consciente, no un descuido.
+
+  LOS TRES PARAMETROS
+    Limite de pasos: 25 por defecto, configurable.
+    Presupuesto de contexto: 80% de la ventana del modelo, configurable.
+    Truncado del contenido de una herramienta: 30.000 caracteres, configurable.
+    Los tres son pernos de ajuste, no reglas de negocio: cambiarlos no obliga a
+    editar el spec.
+
+  FLUJO DE ESTE REPO
+    `openspec/specs/` es el diseno OBJETIVO ya acordado: 5 capacidades, 42
+    requisitos. Ninguno esta implementado todavia; el repositorio no tiene
+    codigo.
+    Los changes en `openspec/changes/` IMPLEMENTAN contra esos requisitos, no
+    los vuelven a derivar. Al proponer un change, leer primero la capacidad con
+    `openspec show <cap> --type spec` y citar sus requisitos por nombre.
+    Como el comportamiento ya esta completo en los specs principales, cada
+    change declara `skip_specs: true` en su `.openspec.yaml`.
+
+  ESTADO
+    5 capacidades, 42 requisitos, 113 escenarios. Las cinco estan escritas y
+    validadas contra el schema `spec-driven`.
+    core (9) · provider (6) · tools (11) · context (9) · interface (7)
+    NINGUNO ESTA IMPLEMENTADO. El repositorio no tiene codigo: no hay
+    package.json, ni src/, ni dependencias. `openspec/specs/` es el diseno
+    OBJETIVO ya acordado; `openspec/changes/` esta vacio y es donde empieza el
+    trabajo de implementacion.
+
+    El proveedor concreto NO esta decidido. La interfaz es agnostica a
+    proposito, asi que esa eleccion vive en el design.md del change, no aca.
+
+    Parametro sin cifra: el requisito de reintentos de `provider` acota el numero
+    de intentos sin fijar el valor. La v1 no tiene motor de busqueda de
+    subagentes, asi que tampoco hay nivel 3.
+
+# Reglas por artefacto (opcional)
+# rules:
+#   proposal:
+#     - Mantener las propuestas por debajo de 500 palabras
+#   tasks:
+#     - Dividir las tareas en bloques de maximo 2 horas

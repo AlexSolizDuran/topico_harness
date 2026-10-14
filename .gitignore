@@ -1,0 +1,18 @@
+node_modules/
+
+# `package-lock.json` SI se versiona. `npm ci` lo necesita para instalar
+# exactamente las versiones que se probaron. Sin el, cada instalacion puede
+# resolver distinto y "funciona en mi maquina" deja de significar nada.
+# Es un archivo generado por `npm install`: nunca se edita a mano.
+
+.env
+.env.*
+!.env.example
+
+*.tsbuildinfo
+.DS_Store
+
+# Artefactos de vitest. Los resultados de cobertura se regeneran con cada
+# `npm test`, asi que versionarlos solo agrega ruido al diff.
+.vitest/
+coverage/

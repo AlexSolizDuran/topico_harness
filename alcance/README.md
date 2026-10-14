@@ -4,7 +4,12 @@ Documento de referencia. Define **qué es un harness**, cómo se construyen por
 niveles, y qué entra en cada uno. Es la referencia de alcance; la especificación
 formal vive en `openspec/specs/`.
 
-**Todavía no hay OpenSpec.** Este documento lo precede y lo informa.
+El OpenSpec está escrito: las 5 capacidades de `openspec/specs/` cubren los niveles
+0 a 2 de abajo — `core` (nivel 1), `provider` (nivel 0), `tools` (nivel 1),
+`context` (nivel 2) e `interface`. Ninguno está implementado todavía.
+
+**Si los dos se contradicen, el spec manda.** Este documento explica el porqué de
+cada decisión; el spec dice qué tiene que hacer el sistema.
 
 ## Qué es un harness
 
