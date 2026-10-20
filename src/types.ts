@@ -74,15 +74,18 @@ export type EstadoTurno =
       tipo: 'completado'
       mensajes: Mensaje[]
       pasosEjecutados: number
+      tokens?: ConteoTokens | undefined
     }
   | {
       tipo: 'cancelado'
       mensajes: Mensaje[]
       pasosEjecutados: number
+      tokens?: ConteoTokens | undefined
     }
   | {
       tipo: 'fallido'
       motivo: string
       mensajes: Mensaje[]
       pasosEjecutados: number
+      tokens?: ConteoTokens | undefined
     }

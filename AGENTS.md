@@ -11,25 +11,29 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-Hoy es un repositorio **sin implementación**: hay diseño y no hay código. No hay
-`src/` con nada adentro, y los únicos tests van a aparecer con el primer change.
+La implementación está completa: los 9 changes de `openspec/changes/` están
+implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 187
+tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
+con herramientas reales. Queda una deuda de verificación: el camino de Windows no
+corrió en CI.
 
 ## Estado del OpenSpec
 
 | | |
 |---|---|
 | Capacidades | 5 |
-| Requisitos | 42 |
-| Escenarios | 113 |
+| Requisitos | 49 |
+| Escenarios | 141 |
+| Implementación | 9 changes, `npm run check` en verde |
 | Validado | contra las reglas del schema `spec-driven` |
 
-| Capacidad | Requisitos | Qué cubre |
-|---|---|---|
-| `core` | 9 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación |
-| `provider` | 6 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial, conteo de tokens |
-| `tools` | 11 | lectura, escritura, edición, búsqueda, ejecución por catálogo, esquemas, truncado, rutas |
-| `context` | 9 | presupuesto, conteo, recorte, compactación y las tres reglas que no se rompen |
-| `interface` | 7 | streaming, herramientas visibles, input, cancelación, degradación sin terminal |
+| Capacidad | Requisitos | Escenarios | Qué cubre |
+|---|---|---|---|
+| `core` | 9 | 23 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación |
+| `provider` | 7 | 24 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial, conteo de tokens, cambio de modelo entre turnos |
+| `tools` | 11 | 33 | lectura, escritura, edición, búsqueda, ejecución por catálogo, esquemas, truncado, rutas, PowerShell en Windows |
+| `context` | 9 | 26 | presupuesto, conteo, recorte, compactación, validación entre pasos y las tres reglas que no se rompen |
+| `interface` | 13 | 35 | streaming, herramientas visibles, input, cancelación, degradación sin terminal, arranque desde la terminal, estado, comandos, multilínea, contexto |
 
 `openspec/specs/<capacidad>/spec.md` es la fuente de verdad. La estructura de cada
 spec es fija: `## Purpose`, luego `## Requirements`, y dentro `### Requirement:`
@@ -222,18 +226,18 @@ Además:
 `tests/core/` tiene 23 tests. El nombre del test es el nombre del escenario,
 literal. Cuando agregás un requisito, agregás su escenario y su test.
 
-Es la única regla que ata código a spec. Con 42 requisitos y 113 escenarios, es la
+Es la única regla que ata código a spec. Con 49 requisitos y 141 escenarios, es la
 que justifica el resto.
 
 **2. La dirección de dependencia se verifica con un test, no con una promesa.** Un
 test lee los archivos de `src/core/` y falla si encuentra un import de
-`../interface/`. Ese test llega con `010-core`.
+`../interface/`. Vive en `tests/core/`.
 
 **3. `any` explícito es error.** `biome.json` lo marca. La razón: los datos vienen
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy falla: el repositorio no tiene código todavía.
+typecheck y tests. Hoy pasa con 187 tests.
 
 ## Stack
 
@@ -249,6 +253,43 @@ Vive en `openspec/config.yaml`. Resumen:
 Módulos con `nodenext`: los imports relativos llevan extensión `.js` aunque el
 archivo sea `.ts`. Es lo que Node verá después de compilar.
 
+## Configuración, modelos y arranque
+
+`npm run dev` ejecuta `src/main.ts` con `tsx`; `npm run build` compila a `dist/` y
+`npm start` ejecuta lo compilado. `npm run link` construye y enlaza el binario
+`harness` de forma global.
+
+La configuración vive en `.harness/config.json`. Ese archivo está ignorado por
+git, igual que `.env`; el ejemplo versionado es `.harness/config.example.json`.
+La credencial se toma de `variableApiKey` (el nombre de una variable de entorno,
+preferido) o de `apiKey` literal. `apiKey` solo se acepta en el archivo local
+ignorado; nunca en el ejemplo ni en un archivo versionado. La credencial se pasa a
+`credencialesSanitizar` para redactarla de errores y resultados.
+
+Cada modelo declara:
+
+- `id`: el identificador que espera el provider, por ejemplo
+  `openai/gpt-4o` en OpenRouter.
+- `soportaHerramientas`: si es `false`, el adaptador no envía `tools`.
+- `ventanaContexto`: base para el presupuesto (80% por defecto).
+- `maxTokensSalida`: tope de `max_tokens` de la respuesta. Sin este valor,
+  OpenRouter puede reservar su máximo y rechazar la petición por crédito.
+
+Para agregar un modelo alcanza con sumar una entrada a
+`proveedores.<id>.modelos` y elegirlo con `--modelo proveedor/modelo` al arrancar
+o con `/modelo` dentro de la TUI. `/modelo` sin argumentos lista los disponibles;
+el cambio es atómico y conserva el historial.
+
+Para agregar un provider nuevo: implementar `Proveedor` en
+`src/provider/adapters/`, registrarlo por `tipo` en
+`src/provider/factory.ts` y declarar ese `tipo` en la configuración. El núcleo no
+importa el adaptador: lo recibe por parámetro.
+
+Sin pedido inicial y con `stdin`/`stdout` de terminal se abre la TUI de Ink. Con
+un pedido por argumentos, o sin terminal interactiva, se usa el renderizador de
+línea a línea y el proceso termina solo. `--dir` elige el proyecto; si no existe,
+sale con código `1`.
+
 ## Decisiones cerradas
 
 No contradigas los specs. En resumen:
@@ -258,8 +299,10 @@ No contradigas los specs. En resumen:
    red que multiplica el debugging.
 2. **TypeScript + Ink 7.** Node 24, ESM, strict.
 3. **Plataformas: las tres.** Linux, macOS y Windows. La ejecución de comandos
-   **no está disponible en Windows** en la v1: en PowerShell borrar son nueve
-   nombres distintos y una lista negra por nombre no aguanta eso.
+   usa un catálogo por plataforma: Unix con `exec` y lista negra; Windows con
+   PowerShell y allowlist. Ninguna plataforma acepta comandos compuestos. Falta
+   verificar el camino de Windows en CI: el desarrollo y la prueba real fueron en
+   Linux.
 4. **El provider va detrás de una interfaz propia.** El SDK vive solo en el
    adaptador. Agregar un provider después no toca el loop.
 5. **Lista negra por nombre completo, nunca por combinación de flags.** `rm -rf`
@@ -279,8 +322,10 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
    vuelve a validar, nunca el código.
 2. **Nada de commits ni push sin pedido explícito.** Un agente no commitea por
    iniciativa propia.
-3. **Cero secretos en el repo.** La credencial del provider se lee del entorno y
-   nunca aparece en un evento ni en un log.
+3. **Cero secretos en el repo.** La credencial se lee del entorno (`.env`) o de
+   `.harness/config.json`, que está ignorado. El ejemplo versionado no lleva
+   secretos. La credencial se redacta de los errores y nunca aparece en un evento
+   ni en un log.
 4. **Verificar antes de decir que está.** No reportes algo como funcionando sin
    haber corrido el comando.
 5. **Los errores vuelven al modelo, no se tiran.** Ver la regla 2 de arriba.
@@ -293,10 +338,10 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
 |---|---|
 | `alcance/` | Por qué el harness se construye por niveles. 12 documentos de referencia. El razonamiento, no el contrato |
 | `openspec/config.yaml` | Contexto que OpenSpec inyecta: stack, reglas, flujo, estado |
-| `openspec/specs/` | El contrato: 5 capacidades, 42 requisitos |
+| `openspec/specs/` | El contrato: 5 capacidades, 49 requisitos, 141 escenarios |
 | `PREGUNTAS.md` | La decisión abierta y las que se Postergaron |
-| `src/` | **Vacío.** La implementación empieza con el primer change. La arquitectura está en la sección de abajo |
-| `tests/` | **Vacío.** Un test por escenario de los specs |
+| `src/` | La implementación, una carpeta por capacidad. La arquitectura está en la sección de arriba |
+| `tests/` | Un test por escenario, agrupado por capacidad |
 
 ## Cuando el spec y el alcance se contradigan
 

@@ -81,26 +81,29 @@ context: |
     editar el spec.
 
   FLUJO DE ESTE REPO
-    `openspec/specs/` es el diseno OBJETIVO ya acordado: 5 capacidades, 42
-    requisitos. Ninguno esta implementado todavia; el repositorio no tiene
-    codigo.
-    Los changes en `openspec/changes/` IMPLEMENTAN contra esos requisitos, no
-    los vuelven a derivar. Al proponer un change, leer primero la capacidad con
+    `openspec/specs/` es el contrato acordado: 5 capacidades, 49 requisitos y
+    141 escenarios. Los 9 changes de `openspec/changes/` ya lo implementaron.
+    Los changes IMPLEMENTAN contra esos requisitos, no los vuelven a derivar. Al
+    proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
-    Como el comportamiento ya esta completo en los specs principales, cada
-    change declara `skip_specs: true` en su `.openspec.yaml`.
+    Los changes que solo materializan comportamiento ya especificado declaran
+    `skip_specs: true` en su `.openspec.yaml` (070, 080, 090 y 110). Los que
+    ajustan el contrato traen deltas de spec (060, 100, 120, 130 y 140).
 
   ESTADO
-    5 capacidades, 42 requisitos, 113 escenarios. Las cinco estan escritas y
-    validadas contra el schema `spec-driven`.
-    core (9) · provider (6) · tools (11) · context (9) · interface (7)
-    NINGUNO ESTA IMPLEMENTADO. El repositorio no tiene codigo: no hay
-    package.json, ni src/, ni dependencias. `openspec/specs/` es el diseno
-    OBJETIVO ya acordado; `openspec/changes/` esta vacio y es donde empieza el
-    trabajo de implementacion.
+    5 capacidades, 49 requisitos, 141 escenarios. Todo validado contra el schema
+    `spec-driven`.
+    core (9) · provider (7) · tools (11) · context (9) · interface (13)
+    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 187 tests
+    y `npm run build` genera `dist/main.js`. La prueba de punta a punta contra
+    OpenRouter paso en modo plano, con lectura real de archivos y cambio de
+    modelo por `--modelo`.
+    Deuda de verificacion: el camino de Windows (PowerShell y allowlist) esta
+    cubierto por tests unitarios, pero no corrio en CI sobre Windows.
 
-    El proveedor concreto NO esta decidido. La interfaz es agnostica a
-    proposito, asi que esa eleccion vive en el design.md del change, no aca.
+    El provider concreto es OpenRouter por su API compatible con OpenAI; Ollama
+    queda como alternativa local. La interfaz sigue siendo agnostica: el
+    adaptador vive en `src/provider/adapters/` y el nucleo no lo importa.
 
     Parametro sin cifra: el requisito de reintentos de `provider` acota el numero
     de intentos sin fijar el valor. La v1 no tiene motor de busqueda de

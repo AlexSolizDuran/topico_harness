@@ -156,6 +156,52 @@ describe('interface Specification Tests', () => {
         expect(elem.truncado).toBe(true)
       }
     })
+
+    it('Herramienta en curso', () => {
+      // WHEN una herramienta empieza a ejecutarse
+      let estado = crearEstadoInicial()
+      estado = aplicarEventoTurno(estado, {
+        tipo: 'herramienta_inicio',
+        id: '4',
+        nombre: 'read',
+        argumentos: { ruta: 'src/main.ts' },
+      })
+
+      // THEN la interfaz la muestra con su nombre y argumentos
+      expect(estado.herramientaEnCurso).toMatchObject({
+        id: '4',
+        nombre: 'read',
+        argumentos: { ruta: 'src/main.ts' },
+      })
+      expect(estado.historial).toHaveLength(0)
+    })
+
+    it('Herramienta terminada', () => {
+      // WHEN una herramienta termina
+      let estado = crearEstadoInicial()
+      estado = aplicarEventoTurno(estado, {
+        tipo: 'herramienta_inicio',
+        id: '5',
+        nombre: 'edit',
+        argumentos: { ruta: 'a.ts' },
+      })
+      estado = aplicarEventoTurno(estado, {
+        tipo: 'herramienta_fin',
+        id: '5',
+        nombre: 'edit',
+        resultado: 'ok',
+        esError: false,
+      })
+
+      // THEN deja de estar en curso y el resultado queda en el historial
+      expect(estado.herramientaEnCurso).toBeUndefined()
+      expect(estado.historial[0]).toMatchObject({
+        tipo: 'herramienta',
+        nombre: 'edit',
+        argumentos: { ruta: 'a.ts' },
+        resultado: 'ok',
+      })
+    })
   })
 
   // --------------------------------------------------------------------------

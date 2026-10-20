@@ -30,6 +30,7 @@ export interface SimulacionRespuesta {
 
 export interface ConfiguracionMock {
   nombre?: string | undefined
+  modelo?: string | undefined
   variableEntornoApiKey?: string | undefined
   entorno?: NodeJS.ProcessEnv | undefined
   respuestas?: SimulacionRespuesta[] | undefined
@@ -41,6 +42,7 @@ export interface ConfiguracionMock {
  */
 export class ProveedorSimulado implements Proveedor {
   readonly nombre: string
+  readonly modelo?: string | undefined
   private readonly variableApiKey?: string | undefined
   private readonly entorno: NodeJS.ProcessEnv
   private readonly respuestas: SimulacionRespuesta[]
@@ -50,6 +52,7 @@ export class ProveedorSimulado implements Proveedor {
 
   constructor(config: ConfiguracionMock = {}) {
     this.nombre = config.nombre ?? 'simulado'
+    this.modelo = config.modelo
     this.variableApiKey = config.variableEntornoApiKey
     this.entorno = config.entorno ?? process.env
     this.respuestas = [...(config.respuestas ?? [])]

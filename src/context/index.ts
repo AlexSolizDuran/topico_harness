@@ -1,4 +1,6 @@
 export * from './budget.js'
 export * from './compaction.js'
+export * from './metrics.js'
+export * from './pipeline.js'
 export * from './tokens.js'
 export * from './trimming.js'

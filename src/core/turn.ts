@@ -1,5 +1,6 @@
 import type { Proveedor } from '../provider/types.js'
 import type {
+  ConteoTokens,
   EstadoTurno,
   EventoTurno,
   Mensaje,
@@ -11,6 +12,13 @@ import type { RegistroHerramientas } from './registry.js'
 
 export const LIMITE_PASOS_POR_DEFECTO = 25
 
+export interface PreparacionHistorial {
+  mensajes: Mensaje[]
+  error?: string | undefined
+}
+
+export type PrepararHistorial = (mensajes: Mensaje[]) => PreparacionHistorial
+
 export interface OpcionesTurno {
   proveedor: Proveedor
   registro: RegistroHerramientas
@@ -19,6 +27,7 @@ export interface OpcionesTurno {
   limitePasos?: number | undefined
   senalCancelacion?: AbortSignal | undefined
   credencialesSanitizar?: string[] | undefined
+  prepararHistorial?: PrepararHistorial | undefined
 }
 
 interface ResultadoPasoProveedor {
@@ -26,6 +35,7 @@ interface ResultadoPasoProveedor {
   error?: Error | undefined
   textoTurno: string
   llamadasHerramientas: SolicitudHerramienta[]
+  tokens?: ConteoTokens | undefined
 }
 
 async function* consultarProveedor(
@@ -34,8 +44,24 @@ async function* consultarProveedor(
 ): AsyncGenerator<EventoTurno, ResultadoPasoProveedor, unknown> {
   let textoTurno = ''
   const llamadasHerramientas: SolicitudHerramienta[] = []
+  let tokens: ConteoTokens | undefined
 
   try {
+    const preparado = opciones.prepararHistorial?.(historial)
+    if (preparado && preparado.mensajes !== historial) {
+      historial.splice(0, historial.length, ...preparado.mensajes)
+      validarHistorialAtomico(historial)
+    }
+    if (preparado?.error) {
+      return {
+        cancelado: false,
+        error: new Error(preparado.error),
+        textoTurno,
+        llamadasHerramientas,
+        tokens,
+      }
+    }
+
     const herramientas = opciones.registro.listarDefiniciones()
     const flujo = opciones.proveedor.enviar({
       mensajes: historial,
@@ -46,7 +72,12 @@ async function* consultarProveedor(
 
     for await (const evento of flujo) {
       if (opciones.senalCancelacion?.aborted) {
-        return { cancelado: true, textoTurno, llamadasHerramientas }
+        return {
+          cancelado: true,
+          textoTurno,
+          llamadasHerramientas,
+          tokens,
+        }
       }
 
       if (evento.tipo === 'texto') {
@@ -58,19 +89,27 @@ async function* consultarProveedor(
           nombre: evento.nombre,
           argumentos: evento.argumentos,
         })
+      } else if (evento.tipo === 'fin') {
+        tokens = evento.tokens
       }
     }
 
-    return { cancelado: false, textoTurno, llamadasHerramientas }
+    return { cancelado: false, textoTurno, llamadasHerramientas, tokens }
   } catch (error) {
     if (opciones.senalCancelacion?.aborted) {
-      return { cancelado: true, textoTurno, llamadasHerramientas }
+      return {
+        cancelado: true,
+        textoTurno,
+        llamadasHerramientas,
+        tokens,
+      }
     }
     return {
       cancelado: false,
       error: error instanceof Error ? error : new Error(String(error)),
       textoTurno,
       llamadasHerramientas,
+      tokens,
     }
   }
 }
@@ -135,7 +174,12 @@ async function* ejecutarUnPaso(
   const resProveedor = pasoRes.value
 
   if (resProveedor.cancelado) {
-    return { tipo: 'cancelado', mensajes: historial, pasosEjecutados: paso }
+    return {
+      tipo: 'cancelado',
+      mensajes: historial,
+      pasosEjecutados: paso,
+      tokens: resProveedor.tokens,
+    }
   }
 
   if (resProveedor.error) {
@@ -144,6 +188,7 @@ async function* ejecutarUnPaso(
       motivo: resProveedor.error.message,
       mensajes: historial,
       pasosEjecutados: paso,
+      tokens: resProveedor.tokens,
     }
   }
 
@@ -158,7 +203,12 @@ async function* ejecutarUnPaso(
   })
 
   if (resProveedor.llamadasHerramientas.length === 0) {
-    return { tipo: 'completado', mensajes: historial, pasosEjecutados: paso }
+    return {
+      tipo: 'completado',
+      mensajes: historial,
+      pasosEjecutados: paso,
+      tokens: resProveedor.tokens,
+    }
   }
 
   yield* ejecutarLlamadasHerramientas(
@@ -175,7 +225,12 @@ async function* ejecutarUnPaso(
       contenido: `Se alcanzó el límite de ${maxPasos} pasos. Estado actual: se ejecutaron ${paso} iteraciones y quedaron tareas pendientes.`,
     })
 
-    return { tipo: 'completado', mensajes: historial, pasosEjecutados: paso }
+    return {
+      tipo: 'completado',
+      mensajes: historial,
+      pasosEjecutados: paso,
+      tokens: resProveedor.tokens,
+    }
   }
 
   return undefined

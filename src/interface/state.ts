@@ -1,9 +1,20 @@
+import {
+  crearMetricasVacias,
+  type MetricasContexto,
+} from '../context/metrics.js'
 import type { EventoTurno } from '../types.js'
 
 let contadorVisual = 0
 export function generarIdVisual(): string {
   contadorVisual++
   return `v-${contadorVisual}`
+}
+
+export interface HerramientaEnCurso {
+  id: string
+  nombre: string
+  argumentos: Record<string, unknown>
+  iniciadaEn: number
 }
 
 export type ElementoVisual =
@@ -13,6 +24,7 @@ export type ElementoVisual =
       id: string
       tipo: 'herramienta'
       nombre: string
+      argumentos?: Record<string, unknown> | undefined
       resultado: string
       esError: boolean
       truncado: boolean
@@ -25,15 +37,24 @@ export interface EstadoSesionVisual {
   textoStreamingActual: string
   turnoEnCurso: boolean
   cancelado: boolean
+  modeloActivo: string
+  contexto: MetricasContexto
+  herramientaEnCurso?: HerramientaEnCurso | undefined
 }
 
-export function crearEstadoInicial(promptSistema = ''): EstadoSesionVisual {
+export function crearEstadoInicial(
+  promptSistema = '',
+  modeloActivo = '',
+  contexto: MetricasContexto = crearMetricasVacias(),
+): EstadoSesionVisual {
   return {
     promptSistema,
     historial: [],
     textoStreamingActual: '',
     turnoEnCurso: false,
     cancelado: false,
+    modeloActivo,
+    contexto,
   }
 }
 
@@ -61,19 +82,28 @@ export function aplicarEventoTurno(
       })
       nuevo.textoStreamingActual = ''
     }
+    nuevo.herramientaEnCurso = {
+      id: evento.id,
+      nombre: evento.nombre,
+      argumentos: evento.argumentos,
+      iniciadaEn: Date.now(),
+    }
     return nuevo
   }
 
   if (evento.tipo === 'herramienta_fin') {
     const esTruncado = evento.resultado.includes('[Contenido truncado')
+    const enCurso = nuevo.herramientaEnCurso
     nuevo.historial.push({
       id: generarIdVisual(),
       tipo: 'herramienta',
       nombre: evento.nombre,
+      argumentos: enCurso?.id === evento.id ? enCurso.argumentos : undefined,
       resultado: evento.resultado,
       esError: evento.esError,
       truncado: esTruncado,
     })
+    nuevo.herramientaEnCurso = undefined
     return nuevo
   }
 
@@ -109,6 +139,7 @@ export function finalizarTurnoVisual(
 
   nuevo.turnoEnCurso = false
   nuevo.cancelado = cancelado
+  nuevo.herramientaEnCurso = undefined
 
   if (cancelado) {
     nuevo.historial.push({

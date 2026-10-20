@@ -685,4 +685,94 @@ describe('core Specification Tests', () => {
       }
     })
   })
+
+  // --------------------------------------------------------------------------
+  // Requirement: El presupuesto se verifica antes de cada petición
+  // --------------------------------------------------------------------------
+  describe('Requirement: El presupuesto se verifica antes de cada petición', () => {
+    it('Un turno con varios pasos', async () => {
+      // WHEN un turno ejecuta herramientas y el historial crece entre pasos
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {},
+        ejecutar: async () => 'contenido',
+      })
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [{ id: 'c1', nombre: 'read', argumentos: {} }],
+          },
+          { fragmentosTexto: ['fin'] },
+        ],
+      })
+      let preparaciones = 0
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          mensajes: [{ rol: 'user', contenido: 'leé' }],
+          prepararHistorial: (mensajes) => {
+            preparaciones++
+            if (preparaciones === 2) {
+              return { mensajes, error: 'presupuesto excedido' }
+            }
+            return { mensajes }
+          },
+        }),
+      )
+
+      // THEN el sistema verifica antes de cada petición y no envía la segunda
+      expect(preparaciones).toBe(2)
+      expect(proveedor.peticionesRecibidas).toHaveLength(1)
+      expect(estado.tipo).toBe('fallido')
+      if (estado.tipo === 'fallido') {
+        expect(estado.motivo).toContain('presupuesto')
+      }
+    })
+
+    it('El historial recortado se sincroniza', async () => {
+      // WHEN la preparación reemplaza un resultado viejo
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {},
+        ejecutar: async () => 'contenido original',
+      })
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [{ id: 'c1', nombre: 'read', argumentos: {} }],
+          },
+          { fragmentosTexto: ['fin'] },
+        ],
+      })
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          mensajes: [{ rol: 'user', contenido: 'leé' }],
+          prepararHistorial: (mensajes) => ({
+            mensajes: mensajes.map((mensaje) =>
+              mensaje.rol === 'tool'
+                ? { ...mensaje, resultado: 'resultado recortado' }
+                : mensaje,
+            ),
+          }),
+        }),
+      )
+
+      // THEN el estado final y la petición usan la misma versión recortada
+      const resultado = estado.mensajes.find((m) => m.rol === 'tool')
+      expect(resultado?.resultado).toBe('resultado recortado')
+      const segundaPeticion = proveedor.peticionesRecibidas[1]
+      expect(
+        segundaPeticion?.mensajes.find((m) => m.rol === 'tool')?.resultado,
+      ).toBe('resultado recortado')
+    })
+  })
 })

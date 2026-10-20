@@ -39,7 +39,7 @@ export function crearHerramientaLectura(
       const fin = typeof args.fin === 'number' ? args.fin : undefined
 
       if (inicio !== undefined || fin !== undefined) {
-        const lineas = contenidoCompleto.split('\n')
+        const lineas = contenidoCompleto.split(/\r?\n/)
         const lineaDesde = Math.max(1, inicio ?? 1) - 1
         const lineaHasta =
           fin !== undefined ? Math.min(lineas.length, fin) : lineas.length

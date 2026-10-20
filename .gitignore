@@ -12,7 +12,15 @@ node_modules/
 *.tsbuildinfo
 .DS_Store
 
+# Salida de `npm run build`. Se regenera; el binario se publica desde el paquete.
+dist/
+
 # Artefactos de vitest. Los resultados de cobertura se regeneran con cada
 # `npm test`, asi que versionarlos solo agrega ruido al diff.
 .vitest/
 coverage/
+
+# Configuracion local del harness: modelos, cabeceras y credenciales propias.
+# El ejemplo SI se versiona; el archivo real y el estado local no.
+.harness/*
+!.harness/config.example.json

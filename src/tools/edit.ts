@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import type { EntradaHerramienta } from '../core/registry.js'
+import { detectarEol, normalizarEol, restaurarEol } from './eol.js'
 import { resolverRutaSegura } from './path.js'
 
 export function crearHerramientaEdicion(
@@ -8,7 +9,7 @@ export function crearHerramientaEdicion(
   return {
     nombre: 'edit',
     descripcion:
-      'Reemplaza una ocurrencia única y exacta de texto en un archivo del proyecto.',
+      'Reemplaza una ocurrencia única y exacta de texto en un archivo del proyecto. Tolera diferencias entre fin de línea LF y CRLF.',
     esquema: {
       type: 'object',
       properties: {
@@ -32,10 +33,19 @@ export function crearHerramientaEdicion(
       const buscar = String(args.buscar ?? '')
       const reemplazar = String(args.reemplazar ?? '')
 
+      if (buscar.length === 0) {
+        throw new Error('El texto a buscar no puede estar vacío.')
+      }
+
       const rutaAbsoluta = resolverRutaSegura(ruta, directorioProyecto)
       const contenidoOriginal = await readFile(rutaAbsoluta, 'utf-8')
+      const eolOriginal = detectarEol(contenidoOriginal)
 
-      const partes = contenidoOriginal.split(buscar)
+      const contenidoNormalizado = normalizarEol(contenidoOriginal)
+      const buscarNormalizado = normalizarEol(buscar)
+      const reemplazarNormalizado = normalizarEol(reemplazar)
+
+      const partes = contenidoNormalizado.split(buscarNormalizado)
       const ocurrencias = partes.length - 1
 
       if (ocurrencias === 0) {
@@ -50,7 +60,10 @@ export function crearHerramientaEdicion(
         )
       }
 
-      const nuevoContenido = partes.join(reemplazar)
+      const nuevoContenido = restaurarEol(
+        partes.join(reemplazarNormalizado),
+        eolOriginal,
+      )
       await writeFile(rutaAbsoluta, nuevoContenido, 'utf-8')
 
       return `Reemplazo aplicado exitosamente en '${ruta}'.`

@@ -2,10 +2,18 @@ import type { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import type { EntradaHerramienta } from '../core/registry.js'
+import { debeIgnorarRuta } from './ignore.js'
 import { truncarContenido } from './truncate.js'
 
-function debeIgnorarDirectorio(parentPath: string): boolean {
-  return parentPath.includes('node_modules') || parentPath.includes('.git')
+function debeIgnorarEntrada(
+  entrada: Dirent,
+  directorioProyecto: string,
+): boolean {
+  const ruta = relative(
+    directorioProyecto,
+    join(entrada.parentPath, entrada.name),
+  )
+  return debeIgnorarRuta(ruta)
 }
 
 async function escanearArchivoParaGrep(
@@ -14,7 +22,7 @@ async function escanearArchivoParaGrep(
   directorioProyecto: string,
   coincidencias: string[],
 ): Promise<void> {
-  if (!entrada.isFile() || debeIgnorarDirectorio(entrada.parentPath)) {
+  if (!entrada.isFile() || debeIgnorarEntrada(entrada, directorioProyecto)) {
     return
   }
 
@@ -28,7 +36,7 @@ async function escanearArchivoParaGrep(
     const contenido = await readFile(rutaAbsoluta, 'utf-8')
     if (!contenido.includes(cadena)) return
 
-    const lineas = contenido.split('\n')
+    const lineas = contenido.split(/\r?\n/)
     for (let i = 0; i < lineas.length; i++) {
       const linea = lineas[i]
       if (linea?.includes(cadena)) {

@@ -2,6 +2,7 @@ import type { Dirent } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import type { EntradaHerramienta } from '../core/registry.js'
+import { debeIgnorarRuta } from './ignore.js'
 
 function globARegex(patron: string): RegExp {
   const patronNormalizado = patron.replace(/\\/g, '/')
@@ -28,6 +29,7 @@ function evaluarEntradaGlob(
   )
 
   if (rutaRelativa.startsWith('..')) return undefined
+  if (debeIgnorarRuta(rutaRelativa)) return undefined
 
   if (regex.test(rutaRelativa) || regex.test(entrada.name)) {
     return rutaRelativa

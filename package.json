@@ -7,6 +7,10 @@
     "node": ">=24"
   },
   "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "link": "npm run build && npm link",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -14,6 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "bin": {
+    "harness": "./dist/main.js"
   },
   "dependencies": {
     "ink": "7.1.1",
@@ -26,6 +33,7 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.0.4"
   }

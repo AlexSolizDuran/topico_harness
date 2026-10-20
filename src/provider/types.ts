@@ -16,6 +16,7 @@ export interface PeticionProveedor {
 
 export interface Proveedor {
   readonly nombre: string
+  readonly modelo?: string | undefined
   enviar(
     peticion: PeticionProveedor,
   ): AsyncGenerator<EventoProveedor, void, unknown>

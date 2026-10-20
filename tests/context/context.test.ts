@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aplicarPipelineContexto,
   calcularTokensHistorial,
   compactarHistorial,
   ENCABEZADO_RESUMEN,
   ErrorPresupuestoExcedido,
   generarTextoResumen,
   MARCADOR_RECORTADO,
+  medirContexto,
   PORCENTAJE_PRESUPUESTO_DEFECTO,
   PresupuestoContexto,
   recortarSalidasHerramientasViejas,
@@ -370,26 +372,200 @@ describe('context Specification Tests', () => {
   describe('Requirement: La compactación ocurre al final de un turno', () => {
     it('Compacta una sola vez por turno', () => {
       // WHEN un turno termina y el historial quedó fuera del presupuesto
-      let llamadasCompactar = 0
-      const alTerminarTurno = () => {
-        llamadasCompactar++
-      }
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'a'.repeat(1000) },
+        { rol: 'assistant', contenido: 'b'.repeat(1000) },
+        { rol: 'user', contenido: 'c'.repeat(1000) },
+        { rol: 'assistant', contenido: 'd'.repeat(1000) },
+        { rol: 'user', contenido: 'e'.repeat(1000) },
+        { rol: 'assistant', contenido: 'f'.repeat(1000) },
+      ]
 
-      alTerminarTurno()
+      const resultado = aplicarPipelineContexto(mensajes, presupuesto, {
+        entrada: 2000,
+        salida: 0,
+      })
 
       // THEN el sistema compacta una vez al final de ese turno
-      expect(llamadasCompactar).toBe(1)
+      expect(resultado.compactado).toBe(true)
+      const resumenes = resultado.mensajes.filter(
+        (m) => m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+      )
+      expect(resumenes).toHaveLength(1)
+
+      // Y una segunda pasada no agrega otro resumen
+      const segunda = aplicarPipelineContexto(
+        resultado.mensajes,
+        presupuesto,
+        resultado.ultimoTokens,
+      )
+      expect(segunda.compactado).toBe(false)
+      expect(
+        segunda.mensajes.filter(
+          (m) =>
+            m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+        ),
+      ).toHaveLength(1)
     })
 
     it('No compacta en cada paso', () => {
-      // WHEN un turno lleva varios pasos
-      const compactacionesEnPasos = 0
-      for (let paso = 1; paso <= 5; paso++) {
-        // En cada paso no se compacta
-      }
+      // WHEN un turno lleva varios pasos y todavía no terminó
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const historialPaso: Mensaje[] = [
+        { rol: 'user', contenido: 'pedido' },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+          ],
+        },
+        { rol: 'tool', idLlamada: 'c1', resultado: 'x'.repeat(100) },
+      ]
+
+      const resultado = aplicarPipelineContexto(historialPaso, presupuesto, {
+        entrada: 100,
+        salida: 10,
+      })
 
       // THEN el sistema no compacta entre ellos
-      expect(compactacionesEnPasos).toBe(0)
+      expect(resultado.compactado).toBe(false)
+      expect(
+        resultado.mensajes.some(
+          (m) =>
+            m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+        ),
+      ).toBe(false)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Escenarios nuevos: compactación repetida, resumen único y límite imposible
+  // --------------------------------------------------------------------------
+  describe('Requirement: Compactación repetida y resumen único', () => {
+    it('La compactación se repite', () => {
+      // WHEN después de una compactación el historial sigue fuera del presupuesto
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const mensajes: Mensaje[] = []
+      for (let i = 0; i < 4; i++) {
+        mensajes.push({ rol: 'user', contenido: `u${i}`.repeat(600) })
+        mensajes.push({ rol: 'assistant', contenido: `a${i}`.repeat(600) })
+      }
+
+      const resultado = aplicarPipelineContexto(mensajes, presupuesto)
+
+      // THEN el sistema vuelve a compactar hasta quedar bajo el límite
+      expect(resultado.compactado).toBe(true)
+      expect(resultado.excedePresupuesto).toBe(false)
+      expect(
+        resultado.mensajes.filter(
+          (m) =>
+            m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+        ),
+      ).toHaveLength(1)
+      expect(resultado.mensajes.filter((m) => m.rol === 'user')).toHaveLength(1)
+    })
+
+    it('El resumen no se duplica', () => {
+      // WHEN el sistema compacta un historial que ya tiene un resumen automático
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const mensajes: Mensaje[] = [
+        { rol: 'system', contenido: `${ENCABEZADO_RESUMEN}\nHecho previo.` },
+        { rol: 'user', contenido: 'u1'.repeat(1000) },
+        { rol: 'assistant', contenido: 'a1'.repeat(1000) },
+        { rol: 'user', contenido: 'u2'.repeat(1000) },
+        { rol: 'assistant', contenido: 'a2'.repeat(1000) },
+      ]
+
+      const resultado = aplicarPipelineContexto(mensajes, presupuesto)
+
+      // THEN reemplaza el resumen anterior y deja un solo mensaje de resumen
+      expect(resultado.compactado).toBe(true)
+      const resumenes = resultado.mensajes.filter(
+        (m) => m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+      )
+      expect(resumenes).toHaveLength(1)
+      expect(resumenes[0]?.contenido).toContain('Hecho previo.')
+    })
+
+    it('El presupuesto no se puede satisfacer', () => {
+      // WHEN el historial sigue fuera del presupuesto y no quedan turnos para resumir
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'u'.repeat(4000) },
+        { rol: 'assistant', contenido: 'a'.repeat(4000) },
+      ]
+
+      const resultado = aplicarPipelineContexto(mensajes, presupuesto)
+
+      // THEN el sistema deja de compactar e informa que el presupuesto no se pudo satisfacer
+      expect(resultado.compactado).toBe(false)
+      expect(resultado.excedePresupuesto).toBe(true)
+    })
+  })
+
+  describe('Requirement: El contenido de resúmenes anteriores se conserva', () => {
+    it('Los hechos previos sobreviven a una nueva compactación', () => {
+      // WHEN el sistema compacta un historial que ya tenía un resumen
+      const resumenPrevio: Mensaje = {
+        rol: 'system',
+        contenido: `${ENCABEZADO_RESUMEN}\nUbicación establecida en src/viejo.ts, línea 7.`,
+      }
+      const mensajes: Mensaje[] = [
+        resumenPrevio,
+        { rol: 'user', contenido: 'turno 1' },
+        { rol: 'assistant', contenido: 'respuesta 1' },
+        { rol: 'user', contenido: 'turno 2' },
+        { rol: 'assistant', contenido: 'respuesta 2' },
+      ]
+
+      const compactados = compactarHistorial(mensajes, 1)
+
+      // THEN el nuevo resumen conserva la ubicación anterior
+      const resumen = compactados.find(
+        (m) => m.rol === 'system' && m.contenido?.includes(ENCABEZADO_RESUMEN),
+      )
+      expect(resumen?.contenido).toContain('src/viejo.ts, línea 7')
+    })
+  })
+
+  describe('Requirement: Las métricas de contexto describen el uso actual', () => {
+    it('El uso actual se mide contra el presupuesto', () => {
+      // WHEN se consultan las métricas de una sesión
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const metricas = medirContexto(
+        presupuesto,
+        [{ rol: 'user', contenido: 'x'.repeat(400) }],
+        undefined,
+        120,
+      )
+
+      // THEN se informan ventana, límite, uso, disponible y acumulado
+      expect(metricas.ventanaContexto).toBe(1000)
+      expect(metricas.limitePresupuesto).toBe(800)
+      expect(metricas.tokensActuales).toBe(100)
+      expect(metricas.disponible).toBe(700)
+      expect(metricas.porcentajeUso).toBe(12.5)
+      expect(metricas.tokensAcumulados).toBe(120)
+      expect(metricas.esEstimado).toBe(true)
     })
   })
 })

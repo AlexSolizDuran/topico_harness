@@ -280,9 +280,9 @@ describe('tools Specification Tests', () => {
   })
 
   // --------------------------------------------------------------------------
-  // Requirement: La herramienta de ejecución se resuelve contra el catálogo de la plataforma
+  // Requirement: La herramienta de ejecución se resuelve contra el catálogo de cada plataforma
   // --------------------------------------------------------------------------
-  describe('Requirement: La herramienta de ejecución se resuelve contra el catálogo de la plataforma', () => {
+  describe('Requirement: La herramienta de ejecución se resuelve contra el catálogo de cada plataforma', () => {
     it('El comando está en el catálogo', async () => {
       // WHEN el modelo solicita un comando presente en el catálogo de la plataforma activa
       const toolShell = crearHerramientaShell({
@@ -319,12 +319,97 @@ describe('tools Specification Tests', () => {
       expect(res).toContain('no está disponible en el catálogo')
     })
 
-    it('La herramienta no está disponible en Windows', () => {
+    it('En Windows se usa PowerShell', async () => {
       // WHEN la plataforma activa es Windows
+      let comandoRecibido = ''
+      const toolShell = crearHerramientaShell({
+        plataforma: 'win32',
+        ejecutor: async (comando) => {
+          comandoRecibido = comando
+          return { salida: 'listado', codigoSalida: 0 }
+        },
+      })
+
+      // THEN el sistema expone la herramienta y ejecuta el comando con PowerShell
+      expect(toolShell).toBeDefined()
+      expect(toolShell?.nombre).toBe('powershell')
+      const res = await toolShell?.ejecutar({ comando: 'Get-ChildItem' })
+      expect(res).toBe('listado')
+      expect(comandoRecibido).toBe('Get-ChildItem')
+    })
+
+    it('Un comando compuesto', async () => {
+      // WHEN el modelo solicita una línea que encadena o compone varios comandos
+      let ejecutado = false
+      const toolShell = crearHerramientaShell({
+        plataforma: 'win32',
+        ejecutor: async () => {
+          ejecutado = true
+          return { salida: '', codigoSalida: 0 }
+        },
+      })
+
+      const res = await toolShell?.ejecutar({
+        comando: 'Get-ChildItem; Remove-Item archivo.txt',
+      })
+
+      // THEN el sistema la rechaza sin ejecutar y explica la regla
+      expect(res).toContain('invocación simple')
+      expect(ejecutado).toBe(false)
+    })
+
+    it('Los comandos de borrado no están en el catálogo de Windows', async () => {
       const toolShell = crearHerramientaShell({ plataforma: 'win32' })
 
-      // THEN el sistema no expone la herramienta de ejecución entre las herramientas disponibles para el modelo
-      expect(toolShell).toBeUndefined()
+      for (const comando of [
+        'Remove-Item archivo.txt',
+        'del archivo.txt',
+        'erase archivo.txt',
+        'rd carpeta',
+        'rmdir carpeta',
+        'rm archivo.txt',
+      ]) {
+        const res = await toolShell?.ejecutar({ comando })
+        expect(res).toContain('no está disponible en el catálogo')
+      }
+    })
+
+    it('Extrae el binario de una ruta absoluta de Windows', async () => {
+      let recibido = ''
+      const toolShell = crearHerramientaShell({
+        plataforma: 'win32',
+        ejecutor: async (comando) => {
+          recibido = comando
+          return { salida: 'ok', codigoSalida: 0 }
+        },
+      })
+
+      const res = await toolShell?.ejecutar({
+        comando: '"C:\\Program Files\\Git\\cmd\\git.exe" status',
+      })
+
+      expect(res).toBe('ok')
+      expect(recibido).toContain('git.exe')
+    })
+
+    it('Un comando compuesto en Unix', async () => {
+      // WHEN el modelo intenta encadenar un comando permitido con uno bloqueado
+      let ejecutado = false
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        ejecutor: async () => {
+          ejecutado = true
+          return { salida: '', codigoSalida: 0 }
+        },
+      })
+
+      const res = await toolShell?.ejecutar({
+        comando: 'cat archivo.txt && rm -rf /',
+      })
+
+      // THEN el sistema rechaza la línea completa antes de ejecutar nada
+      expect(res).toContain('invocación simple')
+      expect(ejecutado).toBe(false)
     })
   })
 
