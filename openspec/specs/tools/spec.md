@@ -108,32 +108,6 @@ búsqueda completa cuando un archivo no pueda leerse.
 
 ---
 
-### Requirement: La herramienta de ejecución se resuelve contra el catálogo de la plataforma
-El sistema SHALL ejecutar un comando solo si ese comando pertenece al catálogo de
-la plataforma activa. El sistema SHALL usar el intérprete propio de la plataforma
-activa. El sistema SHALL exponer la herramienta de ejecución en Linux y macOS, y
-SHALL NOT exponerla en Windows. El sistema SHALL rechazar antes de ejecutar un
-comando que no pertenezca al catálogo, y SHALL devolver al modelo un mensaje que
-indique que el comando no está disponible en esa plataforma.
-
-#### Scenario: El comando está en el catálogo
-- **WHEN** el modelo solicita un comando presente en el catálogo de la plataforma activa
-- **THEN** el sistema lo ejecuta con el intérprete de esa plataforma
-
-#### Scenario: El comando no está en el catálogo
-- **WHEN** el modelo solicita un comando ausente del catálogo de la plataforma activa
-- **THEN** el sistema lo rechaza sin ejecutarlo y explica que no está disponible
-
-#### Scenario: Un comando de otra plataforma
-- **WHEN** el modelo solicita un comando que existe en otra plataforma pero no en la activa
-- **THEN** el sistema lo rechaza en lugar de buscar un equivalente por su cuenta
-
-#### Scenario: La herramienta no está disponible en Windows
-- **WHEN** la plataforma activa es Windows
-- **THEN** el sistema no expone la herramienta de ejecución entre las herramientas disponibles para el modelo
-
----
-
 ### Requirement: Cada herramienta declara su esquema
 Cada herramienta SHALL declarar un esquema que describa el nombre, el tipo y la
 obligatoriedad de cada uno de sus argumentos. El sistema SHALL NOT habilitar una
@@ -222,3 +196,33 @@ El sistema SHALL NOT delegar la decisión al sistema operativo.
 #### Scenario: Un comando permitido
 - **WHEN** el modelo solicita un comando presente en el catálogo y fuera de la lista negra
 - **THEN** el sistema lo ejecuta
+
+### Requirement: La herramienta de ejecución se resuelve contra el catálogo de cada plataforma
+El sistema SHALL ejecutar un comando solo si ese comando pertenece al catálogo de
+la plataforma activa. El sistema SHALL usar el intérprete propio de la plataforma
+activa; en Windows SHALL usar PowerShell. El sistema SHALL exponer la herramienta
+de ejecución en Linux, macOS y Windows. El sistema SHALL rechazar antes de ejecutar
+un comando que no pertenezca al catálogo, y SHALL devolver al modelo un mensaje que
+indique que el comando no está disponible en esa plataforma. El sistema SHALL
+evaluar la solicitud como una invocación simple y SHALL rechazar una línea que
+componga varios comandos.
+
+#### Scenario: El comando está en el catálogo
+- **WHEN** el modelo solicita un comando presente en el catálogo de la plataforma activa
+- **THEN** el sistema lo ejecuta con el intérprete de esa plataforma
+
+#### Scenario: El comando no está en el catálogo
+- **WHEN** el modelo solicita un comando ausente del catálogo de la plataforma activa
+- **THEN** el sistema lo rechaza sin ejecutarlo y explica que no está disponible
+
+#### Scenario: Un comando de otra plataforma
+- **WHEN** el modelo solicita un comando que existe en otra plataforma pero no en la activa
+- **THEN** el sistema lo rechaza en lugar de buscar un equivalente por su cuenta
+
+#### Scenario: En Windows se usa PowerShell
+- **WHEN** la plataforma activa es Windows
+- **THEN** el sistema expone la herramienta y ejecuta el comando con PowerShell
+
+#### Scenario: Un comando compuesto
+- **WHEN** el modelo solicita una línea que encadena o compone varios comandos
+- **THEN** el sistema la rechaza sin ejecutar y explica que solo admite una invocación simple
