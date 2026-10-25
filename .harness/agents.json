@@ -1,0 +1,33 @@
+{
+  "agentePorDefecto": "build",
+  "agentes": [
+    {
+      "nombre": "build",
+      "descripcion": "Agente principal con acceso a todas las herramientas disponibles.",
+      "modo": "primario",
+      "herramientas": [
+        "read",
+        "glob",
+        "grep",
+        "write",
+        "edit",
+        "shell",
+        "task"
+      ]
+    },
+    {
+      "nombre": "plan",
+      "descripcion": "Agente de solo lectura que puede leer y buscar sin modificar el proyecto ni ejecutar comandos.",
+      "modo": "primario",
+      "herramientas": ["read", "glob", "grep"],
+      "prompt": "Modo de solo lectura: analizá el proyecto y respondé o proponé un plan sin modificar archivos ni ejecutar comandos."
+    },
+    {
+      "nombre": "explore",
+      "descripcion": "Subagente de solo lectura para investigar archivos y búsquedas acotadas.",
+      "modo": "subagente",
+      "herramientas": ["read", "glob", "grep"],
+      "prompt": "Investigá el pedido usando las herramientas de lectura y devolvé solo el resultado final, sin narrar el proceso ni los pasos intermedios."
+    }
+  ]
+}

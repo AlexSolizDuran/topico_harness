@@ -1,10 +1,22 @@
 import type { DefinicionHerramienta } from '../provider/types.js'
+import type { AccionPermiso } from '../types.js'
 
 export interface EntradaHerramienta {
   nombre: string
   descripcion: string
   esquema: Record<string, unknown>
-  ejecutar: (argumentos: Record<string, unknown>) => Promise<string>
+  accionPermiso?: AccionPermiso | undefined
+  obtenerRecurso?:
+    | ((argumentos: Record<string, unknown>) => string | string[])
+    | undefined
+  proponerPatron?:
+    | ((argumentos: Record<string, unknown>, recurso: string) => string)
+    | undefined
+  admiteParalelo?: boolean | undefined
+  ejecutar: (
+    argumentos: Record<string, unknown>,
+    senalCancelacion?: AbortSignal,
+  ) => Promise<string>
 }
 
 /**
@@ -26,11 +38,34 @@ export class RegistroHerramientas {
     return this.herramientas.has(nombre)
   }
 
+  listarNombres(): string[] {
+    return Array.from(this.herramientas.keys())
+  }
+
+  listarEntradas(): EntradaHerramienta[] {
+    return Array.from(this.herramientas.values())
+  }
+
   listarDefiniciones(): DefinicionHerramienta[] {
     return Array.from(this.herramientas.values()).map((h) => ({
       nombre: h.nombre,
       descripcion: h.descripcion,
       esquema: h.esquema,
     }))
+  }
+
+  /**
+   * Devuelve un nuevo registro con solo las herramientas indicadas,
+   * sin mutar el catálogo original.
+   */
+  filtrar(nombres: Iterable<string>): RegistroHerramientas {
+    const permitido = new Set(nombres)
+    const filtrado = new RegistroHerramientas()
+    for (const [nombre, entrada] of this.herramientas.entries()) {
+      if (permitido.has(nombre)) {
+        filtrado.registrar(entrada)
+      }
+    }
+    return filtrado
   }
 }

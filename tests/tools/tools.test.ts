@@ -4,7 +4,9 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ejecutarTurno, RegistroHerramientas } from '../../src/core/index.js'
 import { ProveedorSimulado } from '../../src/provider/index.js'
+import { crearHerramientaDelegacion } from '../../src/subagents/index.js'
 import {
+  crearCatalogoPorDefecto,
   crearHerramientaEdicion,
   crearHerramientaEscritura,
   crearHerramientaGlob,
@@ -12,6 +14,7 @@ import {
   crearHerramientaLectura,
   crearHerramientaShell,
   ErrorEsquemaRequerido,
+  ErrorPermisoHerramientaRequerido,
   ErrorRutaInvalida,
   MAXIMO_CONTENIDO_POR_DEFECTO,
   registrarHerramientaConValidacion,
@@ -332,10 +335,22 @@ describe('tools Specification Tests', () => {
 
       // THEN el sistema expone la herramienta y ejecuta el comando con PowerShell
       expect(toolShell).toBeDefined()
-      expect(toolShell?.nombre).toBe('powershell')
+      expect(toolShell?.nombre).toBe('shell')
       const res = await toolShell?.ejecutar({ comando: 'Get-ChildItem' })
       expect(res).toBe('listado')
       expect(comandoRecibido).toBe('Get-ChildItem')
+    })
+
+    it('El nombre es el mismo en todas las plataformas', () => {
+      // WHEN se registra la herramienta de ejecución en Linux, macOS o Windows
+      const linuxTool = crearHerramientaShell({ plataforma: 'linux' })
+      const darwinTool = crearHerramientaShell({ plataforma: 'darwin' })
+      const winTool = crearHerramientaShell({ plataforma: 'win32' })
+
+      // THEN se expone bajo el mismo nombre y su catálogo se resuelve según la plataforma activa
+      expect(linuxTool?.nombre).toBe('shell')
+      expect(darwinTool?.nombre).toBe('shell')
+      expect(winTool?.nombre).toBe('shell')
     })
 
     it('Un comando compuesto', async () => {
@@ -604,6 +619,146 @@ describe('tools Specification Tests', () => {
 
       // THEN el sistema lo ejecuta
       expect(res).toBe('commit abc1234')
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: La herramienta de delegación declara su esquema
+  // --------------------------------------------------------------------------
+  describe('Requirement: La herramienta de delegación declara su esquema', () => {
+    it('La herramienta de delegación declara agente y pedido', () => {
+      // WHEN el modelo consulta qué acepta la herramienta de delegación
+      const toolSubagente = crearHerramientaDelegacion({
+        obtenerAgentes: () => [
+          {
+            nombre: 'explore',
+            descripcion: 'Explorador',
+            modo: 'subagente',
+            herramientas: ['read'],
+            prompt: 'Explora.',
+          },
+        ],
+        obtenerCatalogo: () => new RegistroHerramientas(),
+        obtenerProveedorPadre: () => new ProveedorSimulado(),
+      })
+
+      // THEN el sistema expone el agente elegido y el pedido como argumentos obligatorios
+      expect(toolSubagente.esquema).toHaveProperty('properties')
+      const requeridos = (toolSubagente.esquema as { required?: string[] })
+        .required
+      expect(requeridos).toEqual(['agent', 'prompt'])
+    })
+
+    it('Un argumento inválido vuelve como texto', async () => {
+      // WHEN el modelo invoca la herramienta de delegación sin alguno de sus argumentos obligatorios
+      const toolSubagente = crearHerramientaDelegacion({
+        obtenerAgentes: () => [
+          {
+            nombre: 'explore',
+            descripcion: 'Explorador',
+            modo: 'subagente',
+            herramientas: ['read'],
+            prompt: 'Explora.',
+          },
+        ],
+        obtenerCatalogo: () => new RegistroHerramientas(),
+        obtenerProveedorPadre: () => new ProveedorSimulado(),
+      })
+
+      const resSinPedido = await toolSubagente.ejecutar({ agent: 'explore' })
+      const resSinAgente = await toolSubagente.ejecutar({ prompt: 'Busca X' })
+
+      // THEN el sistema la rechaza sin ejecutar el hijo y devuelve el motivo como resultado de herramienta
+      expect(resSinPedido).toContain('ERROR:')
+      expect(resSinAgente).toContain('ERROR:')
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: Cada herramienta declara su acción de permiso y su recurso
+  // --------------------------------------------------------------------------
+  describe('Requirement: Cada herramienta declara su acción de permiso y su recurso', () => {
+    it('El catálogo expone la acción y el recurso', () => {
+      // WHEN el sistema prepara una llamada a una herramienta del catálogo
+      const registro = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+
+      const toolRead = registro.obtener('read')
+      const toolWrite = registro.obtener('write')
+      const toolEdit = registro.obtener('edit')
+      const toolGlob = registro.obtener('glob')
+      const toolGrep = registro.obtener('grep')
+      const toolShell = registro.obtener('shell')
+
+      // THEN obtiene de la propia herramienta la acción de permiso y el recurso asociado a esos argumentos
+      expect(toolRead?.accionPermiso).toBe('read')
+      expect(toolRead?.obtenerRecurso?.({ ruta: 'src/a.ts' })).toBe('src/a.ts')
+      expect(toolWrite?.accionPermiso).toBe('edit')
+      expect(toolWrite?.obtenerRecurso?.({ ruta: 'src/b.ts' })).toBe('src/b.ts')
+      expect(toolEdit?.accionPermiso).toBe('edit')
+      expect(toolEdit?.obtenerRecurso?.({ ruta: 'src/c.ts' })).toBe('src/c.ts')
+      expect(toolGlob?.accionPermiso).toBe('glob')
+      expect(toolGlob?.obtenerRecurso?.({ patron: '**/*.ts' })).toBe('**/*.ts')
+      expect(toolGrep?.accionPermiso).toBe('grep')
+      expect(toolGrep?.obtenerRecurso?.({ cadena: 'TODO' })).toBe('TODO')
+      expect(toolShell?.accionPermiso).toBe('shell')
+      expect(toolShell?.obtenerRecurso?.({ comando: 'git status' })).toBe(
+        'git status',
+      )
+    })
+
+    it('Una herramienta sin acción no se habilita', () => {
+      // WHEN se intenta dar de alta una herramienta que no declara su acción de permiso
+      const registro = new RegistroHerramientas()
+
+      // THEN el sistema la rechaza antes de habilitarla
+      expect(() => {
+        registrarHerramientaConValidacion(registro, {
+          nombre: 'sin_accion',
+          descripcion: 'Tiene esquema pero no acción',
+          esquema: {
+            type: 'object',
+            properties: { x: { type: 'string' } },
+          },
+          ejecutar: async () => '',
+        })
+      }).toThrow(ErrorPermisoHerramientaRequerido)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: Cada herramienta declara si admite ejecución en paralelo
+  // --------------------------------------------------------------------------
+  describe('Requirement: Cada herramienta declara si admite ejecución en paralelo', () => {
+    it('Una herramienta segura se agrupa con las consecutivas', () => {
+      // WHEN el catálogo registra las herramientas de lectura y búsqueda
+      const registro = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+
+      // THEN quedan marcadas como aptas para ejecutarse en paralelo
+      expect(registro.obtener('read')?.admiteParalelo).toBe(true)
+      expect(registro.obtener('glob')?.admiteParalelo).toBe(true)
+      expect(registro.obtener('grep')?.admiteParalelo).toBe(true)
+      expect(registro.obtener('write')?.admiteParalelo).toBe(false)
+      expect(registro.obtener('edit')?.admiteParalelo).toBe(false)
+      expect(registro.obtener('shell')?.admiteParalelo).toBe(false)
+    })
+
+    it('Una herramienta sin declaración se ejecuta sola', () => {
+      // WHEN se registra una herramienta que no declara si admite ejecución en paralelo
+      const registro = new RegistroHerramientas()
+      registrarHerramientaConValidacion(registro, {
+        nombre: 'personalizada',
+        descripcion: 'Sin admiteParalelo explícito',
+        esquema: {
+          type: 'object',
+          properties: { x: { type: 'string' } },
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: () => '*',
+        ejecutar: async () => 'ok',
+      })
+
+      // THEN el sistema la trata como exclusiva y no la agrupa con otras
+      expect(registro.obtener('personalizada')?.admiteParalelo).toBeFalsy()
     })
   })
 })

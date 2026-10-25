@@ -28,6 +28,9 @@ export function crearHerramientaEdicion(
       },
       required: ['ruta', 'buscar', 'reemplazar'],
     },
+    accionPermiso: 'edit',
+    obtenerRecurso: (args) => String(args.ruta ?? ''),
+    admiteParalelo: false,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
       const buscar = String(args.buscar ?? '')

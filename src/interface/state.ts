@@ -2,7 +2,7 @@ import {
   crearMetricasVacias,
   type MetricasContexto,
 } from '../context/metrics.js'
-import type { EventoTurno } from '../types.js'
+import type { EventoTurno, SolicitudAprobacion } from '../types.js'
 
 let contadorVisual = 0
 export function generarIdVisual(): string {
@@ -15,6 +15,10 @@ export interface HerramientaEnCurso {
   nombre: string
   argumentos: Record<string, unknown>
   iniciadaEn: number
+  completada?: boolean | undefined
+  resultado?: string | undefined
+  esError?: boolean | undefined
+  truncado?: boolean | undefined
 }
 
 export type ElementoVisual =
@@ -29,6 +33,15 @@ export type ElementoVisual =
       esError: boolean
       truncado: boolean
     }
+  | {
+      id: string
+      tipo: 'delegacion'
+      subagente: string
+      pedido: string
+      resultado: string
+      esError: boolean
+      truncado: boolean
+    }
   | { id: string; tipo: 'aviso'; texto: string }
 
 export interface EstadoSesionVisual {
@@ -36,26 +49,145 @@ export interface EstadoSesionVisual {
   historial: ElementoVisual[]
   textoStreamingActual: string
   turnoEnCurso: boolean
+  esperandoAprobacion: boolean
+  aprobacionPendiente?: SolicitudAprobacion | undefined
   cancelado: boolean
   modeloActivo: string
+  agenteActivo: string
   contexto: MetricasContexto
   herramientaEnCurso?: HerramientaEnCurso | undefined
+  herramientasEnCurso: HerramientaEnCurso[]
 }
 
 export function crearEstadoInicial(
   promptSistema = '',
   modeloActivo = '',
   contexto: MetricasContexto = crearMetricasVacias(),
+  agenteActivo = 'build',
 ): EstadoSesionVisual {
   return {
     promptSistema,
     historial: [],
     textoStreamingActual: '',
     turnoEnCurso: false,
+    esperandoAprobacion: false,
     cancelado: false,
     modeloActivo,
+    agenteActivo,
     contexto,
+    herramientasEnCurso: [],
   }
+}
+
+function convertirTarjetaAHistorial(item: HerramientaEnCurso): ElementoVisual {
+  const resultado = item.resultado ?? ''
+  const esError = Boolean(item.esError)
+  const truncado = Boolean(item.truncado)
+
+  if (item.nombre === 'task') {
+    const subagente = String(item.argumentos.agent ?? 'subagente')
+    const pedido = String(item.argumentos.prompt ?? '')
+    return {
+      id: generarIdVisual(),
+      tipo: 'delegacion',
+      subagente,
+      pedido,
+      resultado,
+      esError,
+      truncado,
+    }
+  }
+
+  return {
+    id: generarIdVisual(),
+    tipo: 'herramienta',
+    nombre: item.nombre,
+    argumentos: item.argumentos,
+    resultado,
+    esError,
+    truncado,
+  }
+}
+
+function manejarInicioHerramienta(
+  nuevo: EstadoSesionVisual,
+  evento: Extract<EventoTurno, { tipo: 'herramienta_inicio' }>,
+): EstadoSesionVisual {
+  if (nuevo.textoStreamingActual.length > 0) {
+    nuevo.historial.push({
+      id: generarIdVisual(),
+      tipo: 'asistente',
+      texto: nuevo.textoStreamingActual,
+    })
+    nuevo.textoStreamingActual = ''
+  }
+
+  const entrada: HerramientaEnCurso = {
+    id: evento.id,
+    nombre: evento.nombre,
+    argumentos: evento.argumentos,
+    iniciadaEn: Date.now(),
+    completada: false,
+  }
+
+  nuevo.herramientasEnCurso.push(entrada)
+  nuevo.herramientaEnCurso = nuevo.herramientasEnCurso.find(
+    (h) => !h.completada,
+  )
+  return nuevo
+}
+
+function manejarFinHerramienta(
+  nuevo: EstadoSesionVisual,
+  evento: Extract<EventoTurno, { tipo: 'herramienta_fin' }>,
+): EstadoSesionVisual {
+  const esTruncado = evento.resultado.includes('[Contenido truncado')
+  const indice = nuevo.herramientasEnCurso.findIndex((h) => h.id === evento.id)
+
+  if (indice === -1) {
+    const temporal: HerramientaEnCurso = {
+      id: evento.id,
+      nombre: evento.nombre,
+      argumentos:
+        nuevo.herramientaEnCurso?.id === evento.id
+          ? nuevo.herramientaEnCurso.argumentos
+          : {},
+      iniciadaEn: Date.now(),
+      completada: true,
+      resultado: evento.resultado,
+      esError: evento.esError,
+      truncado: esTruncado,
+    }
+    nuevo.historial.push(convertirTarjetaAHistorial(temporal))
+    nuevo.herramientaEnCurso = undefined
+    return nuevo
+  }
+
+  const actual = nuevo.herramientasEnCurso[indice]
+  if (actual) {
+    nuevo.herramientasEnCurso[indice] = {
+      ...actual,
+      completada: true,
+      resultado: evento.resultado,
+      esError: evento.esError,
+      truncado: esTruncado,
+    }
+  }
+
+  const todasCompletadas = nuevo.herramientasEnCurso.every((h) => h.completada)
+  if (todasCompletadas) {
+    for (const item of nuevo.herramientasEnCurso) {
+      nuevo.historial.push(convertirTarjetaAHistorial(item))
+    }
+    nuevo.herramientasEnCurso = []
+    nuevo.herramientaEnCurso = undefined
+  } else {
+    nuevo.herramientaEnCurso = nuevo.herramientasEnCurso.find(
+      (h) => !h.completada,
+    )
+  }
+
+  return nuevo
 }
 
 /**
@@ -66,45 +198,35 @@ export function aplicarEventoTurno(
   estado: EstadoSesionVisual,
   evento: EventoTurno,
 ): EstadoSesionVisual {
-  const nuevo = { ...estado, historial: [...estado.historial] }
+  const nuevo: EstadoSesionVisual = {
+    ...estado,
+    historial: [...estado.historial],
+    herramientasEnCurso: [...(estado.herramientasEnCurso ?? [])],
+  }
 
   if (evento.tipo === 'texto') {
     nuevo.textoStreamingActual += evento.delta
     return nuevo
   }
 
-  if (evento.tipo === 'herramienta_inicio') {
-    if (nuevo.textoStreamingActual.length > 0) {
-      nuevo.historial.push({
-        id: generarIdVisual(),
-        tipo: 'asistente',
-        texto: nuevo.textoStreamingActual,
-      })
-      nuevo.textoStreamingActual = ''
-    }
-    nuevo.herramientaEnCurso = {
-      id: evento.id,
-      nombre: evento.nombre,
-      argumentos: evento.argumentos,
-      iniciadaEn: Date.now(),
-    }
+  if (evento.tipo === 'espera_aprobacion') {
+    nuevo.esperandoAprobacion = true
+    nuevo.aprobacionPendiente = evento.solicitud
     return nuevo
   }
 
-  if (evento.tipo === 'herramienta_fin') {
-    const esTruncado = evento.resultado.includes('[Contenido truncado')
-    const enCurso = nuevo.herramientaEnCurso
-    nuevo.historial.push({
-      id: generarIdVisual(),
-      tipo: 'herramienta',
-      nombre: evento.nombre,
-      argumentos: enCurso?.id === evento.id ? enCurso.argumentos : undefined,
-      resultado: evento.resultado,
-      esError: evento.esError,
-      truncado: esTruncado,
-    })
-    nuevo.herramientaEnCurso = undefined
+  if (evento.tipo === 'fin_espera_aprobacion') {
+    nuevo.esperandoAprobacion = false
+    nuevo.aprobacionPendiente = undefined
     return nuevo
+  }
+
+  if (evento.tipo === 'herramienta_inicio') {
+    return manejarInicioHerramienta(nuevo, evento)
+  }
+
+  if (evento.tipo === 'herramienta_fin') {
+    return manejarFinHerramienta(nuevo, evento)
   }
 
   if (evento.tipo === 'limite_pasos_alcanzado') {
@@ -126,7 +248,11 @@ export function finalizarTurnoVisual(
   estado: EstadoSesionVisual,
   cancelado = false,
 ): EstadoSesionVisual {
-  const nuevo = { ...estado, historial: [...estado.historial] }
+  const nuevo: EstadoSesionVisual = {
+    ...estado,
+    historial: [...estado.historial],
+    herramientasEnCurso: [],
+  }
 
   if (nuevo.textoStreamingActual.length > 0) {
     nuevo.historial.push({
@@ -138,6 +264,8 @@ export function finalizarTurnoVisual(
   }
 
   nuevo.turnoEnCurso = false
+  nuevo.esperandoAprobacion = false
+  nuevo.aprobacionPendiente = undefined
   nuevo.cancelado = cancelado
   nuevo.herramientaEnCurso = undefined
 

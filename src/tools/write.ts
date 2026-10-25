@@ -24,6 +24,9 @@ export function crearHerramientaEscritura(
       },
       required: ['ruta', 'contenido'],
     },
+    accionPermiso: 'edit',
+    obtenerRecurso: (args) => String(args.ruta ?? ''),
+    admiteParalelo: false,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
       const contenido = String(args.contenido ?? '')

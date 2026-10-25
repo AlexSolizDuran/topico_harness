@@ -2,6 +2,7 @@ export interface Argumentos {
   ayuda: boolean
   directorio?: string | undefined
   modelo?: string | undefined
+  agente?: string | undefined
   pedido: string
 }
 
@@ -10,6 +11,7 @@ export const AYUDA = `Uso: harness [opciones] [pedido...]
 Opciones:
   --dir <ruta>       Directorio del proyecto (por defecto, el actual)
   --modelo <id>      Modelo a usar (proveedor/modelo)
+  --agente <nombre>  Agente primario inicial (por defecto, build)
   -h, --help         Muestra esta ayuda
 
 Sin pedido y con terminal interactiva abre la TUI. Sin pedido y sin terminal
@@ -60,6 +62,13 @@ export function parsearArgumentos(args: string[]): Argumentos {
     if (arg === '--modelo' || arg.startsWith('--modelo=')) {
       const { valor, siguiente } = leerValor(args, i, arg)
       resultado.modelo = valor
+      i = siguiente
+      continue
+    }
+
+    if (arg === '--agente' || arg.startsWith('--agente=')) {
+      const { valor, siguiente } = leerValor(args, i, arg)
+      resultado.agente = valor
       i = siguiente
       continue
     }

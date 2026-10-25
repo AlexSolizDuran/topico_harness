@@ -215,9 +215,9 @@ export function crearHerramientaShell(
     : COMANDOS_BLOQUEADOS_UNIX
 
   return {
-    nombre: esWindows ? 'powershell' : 'bash',
+    nombre: 'shell',
     descripcion: esWindows
-      ? 'Ejecuta una invocación simple de un comando permitido con PowerShell. No admite encadenar comandos.'
+      ? 'Ejecuta una invocación simple de un comando permitido del catálogo de Windows con PowerShell. No admite encadenar comandos.'
       : 'Ejecuta una invocación simple de un comando permitido del catálogo en el intérprete del sistema.',
     esquema: {
       type: 'object',
@@ -230,6 +230,9 @@ export function crearHerramientaShell(
       },
       required: ['comando'],
     },
+    accionPermiso: 'shell',
+    obtenerRecurso: (args) => String(args.comando ?? '').trim(),
+    admiteParalelo: false,
     ejecutar: async (args) => {
       const comando = String(args.comando ?? '').trim()
       const rechazo = validarComando(comando, catalogo, bloqueados, plataforma)

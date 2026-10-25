@@ -29,6 +29,9 @@ export function crearHerramientaLectura(
       },
       required: ['ruta'],
     },
+    accionPermiso: 'read',
+    obtenerRecurso: (args) => String(args.ruta ?? ''),
+    admiteParalelo: true,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
       const rutaAbsoluta = resolverRutaSegura(ruta, directorioProyecto)

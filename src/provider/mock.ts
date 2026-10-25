@@ -131,7 +131,10 @@ export class ProveedorSimulado implements Proveedor {
     peticion: PeticionProveedor,
   ): AsyncGenerator<EventoProveedor, void, unknown> {
     const clave = this.validarCredencial()
-    this.peticionesRecibidas.push(peticion)
+    this.peticionesRecibidas.push({
+      ...peticion,
+      mensajes: [...peticion.mensajes],
+    })
 
     const turno = this.respuestas[this.indiceRespuesta++] ?? {
       fragmentosTexto: ['Respuesta por defecto'],

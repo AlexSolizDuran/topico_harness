@@ -11,29 +11,31 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-La implementación está completa: los 9 changes de `openspec/changes/` están
-implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 187
+La implementación está completa: los 19 changes de `openspec/changes/archive/` están
+implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 300
 tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
-con herramientas reales. Queda una deuda de verificación: el camino de Windows no
-corrió en CI.
+con herramientas reales.
 
 ## Estado del OpenSpec
 
 | | |
 |---|---|
-| Capacidades | 5 |
-| Requisitos | 49 |
-| Escenarios | 141 |
-| Implementación | 9 changes, `npm run check` en verde |
+| Capacidades | 8 |
+| Requisitos | 83 |
+| Escenarios | 251 |
+| Implementación | 19 changes, `npm run check` en verde (300 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
 |---|---|---|---|
-| `core` | 9 | 23 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación |
+| `core` | 12 | 41 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación, espera de aprobación, tandas paralelas, detección de bucles |
 | `provider` | 7 | 24 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial, conteo de tokens, cambio de modelo entre turnos |
-| `tools` | 11 | 33 | lectura, escritura, edición, búsqueda, ejecución por catálogo, esquemas, truncado, rutas, PowerShell en Windows |
-| `context` | 9 | 26 | presupuesto, conteo, recorte, compactación, validación entre pasos y las tres reglas que no se rompen |
-| `interface` | 13 | 35 | streaming, herramientas visibles, input, cancelación, degradación sin terminal, arranque desde la terminal, estado, comandos, multilínea, contexto |
+| `tools` | 14 | 40 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas |
+| `context` | 10 | 28 | presupuesto, conteo, recorte, compactación, validación entre pasos, presupuesto independiente por subagente y las tres reglas que no se rompen |
+| `interface` | 17 | 52 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal |
+| `agents` | 6 | 20 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio y defaults |
+| `subagents` | 9 | 22 | delegación con contexto aislado, profundidad máxima 1, intersección de solo lectura, cancelación unidireccional y presupuesto/pasos/modelo propios |
+| `permissions` | 8 | 24 | reglas ordenadas (`permitir`, `consultar`, `denegar`), política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
 
 `openspec/specs/<capacidad>/spec.md` es la fuente de verdad. La estructura de cada
 spec es fija: `## Purpose`, luego `## Requirements`, y dentro `### Requirement:`
@@ -175,12 +177,15 @@ core/ NO importa interface/.
 
 | Carpeta | Qué vive ahí | Spec |
 |---|---|---|
-| `src/types.ts` | `Mensaje`, `Evento`, `EstadoTurno` | cruza varias capacidades |
-| `src/core/` | el bucle, el historial, el despacho, la cancelación | `core` |
+| `src/types.ts` | `Mensaje`, `Evento`, `EstadoTurno`, `PorteroPermisos` | cruza varias capacidades |
+| `src/core/` | el bucle, el historial, el despacho, las tandas, los loops, la cancelación | `core` |
 | `src/provider/` | la interfaz del provider y su adaptador | `provider` |
 | `src/tools/` | las herramientas, el catálogo y la lista negra | `tools` |
 | `src/context/` | presupuesto, recorte y compactación | `context` |
 | `src/interface/` | la interfaz de terminal | `interface` |
+| `src/agents/` | perfiles declarativos de agente, carga y defaults | `agents` |
+| `src/subagents/` | ejecutor de turno hijo aislado y herramienta `task` | `subagents` |
+| `src/permissions/` | motor de reglas, portero y persistencia de aprobaciones | `permissions` |
 
 **`src/types.ts` contiene solo lo que cruza dos o más módulos.** Si un tipo lo
 usa un solo módulo, vive en ese módulo. Sin esa regla, `types.ts` se convierte en
@@ -222,22 +227,22 @@ Además:
 
 ## Reglas de calidad
 
-**1. Un test por escenario.** `openspec/specs/core/spec.md` tiene 23 escenarios y
-`tests/core/` tiene 23 tests. El nombre del test es el nombre del escenario,
+**1. Un test por escenario.** `openspec/specs/core/spec.md` tiene 41 escenarios y
+`tests/core/` los cubre todos. El nombre del test es el nombre del escenario,
 literal. Cuando agregás un requisito, agregás su escenario y su test.
 
-Es la única regla que ata código a spec. Con 49 requisitos y 141 escenarios, es la
+Es la única regla que ata código a spec. Con 83 requisitos y 251 escenarios, es la
 que justifica el resto.
 
 **2. La dirección de dependencia se verifica con un test, no con una promesa.** Un
 test lee los archivos de `src/core/` y falla si encuentra un import de
-`../interface/`. Vive en `tests/core/`.
+`interface`, `agents`, `subagents` o `permissions`. Vive en `tests/core/`.
 
 **3. `any` explícito es error.** `biome.json` lo marca. La razón: los datos vienen
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy pasa con 187 tests.
+typecheck y tests. Hoy pasa con 300 tests.
 
 ## Stack
 

@@ -44,16 +44,11 @@ pierde ese turno, no la sesión.
 
 ### ¿Los subagentes heredan el contexto del padre?
 
-**Nivel 3.** Contexto vacío + el objetivo explícito en el prompt. Es lo que hace
-que el padre no se infla.
+**Resuelto (`160-subagentes`).** Contexto vacío + el objetivo explícito en el prompt (`task`), profundidad máxima 1, intersección de herramientas de solo lectura y presupuesto/límite de pasos propios. Es lo que hace que el padre no se infle.
 
 ### ¿El harness solo edita, o también ejecuta?
 
-**Resuelto para la v1, la pregunta más grande vuelve en el Nivel 4.** Hoy la
-respuesta es: lee, busca, escribe y edita, y ejecuta comandos de un catálogo con
-lista negra **en Linux y macOS solamente**. En el Nivel 4 la pregunta real es si
-`write` —que puede sobrescribir cualquier archivo del proyecto— pasa por el mismo
-gate que la ejecución.
+**Resuelto (`170-permisos`).** `write` y `edit` comparten la acción de permiso `edit` y pasan por el mismo gate declarativo de permisos (`permitir | consultar | denegar`) que `shell`, `read`, `glob`, `grep`, `subagent` y `external_directory`. La herramienta de ejecución se unificó bajo el nombre `shell` en Linux, macOS y Windows.
 
 ### ¿Cuántos reintentos antes de rendirse?
 

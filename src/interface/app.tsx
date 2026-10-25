@@ -1,6 +1,8 @@
 import { Box, Text } from 'ink'
 import type React from 'react'
+import type { DefinicionAgente } from '../agents/definiciones.js'
 import type { MetricasContexto } from '../context/metrics.js'
+import type { SolicitudAprobacion } from '../types.js'
 import type { ComandoUi } from './commands.js'
 import type {
   ElementoVisual,
@@ -124,15 +126,78 @@ export const TarjetaHerramienta: React.FC<PropsTarjetaHerramienta> = ({
   )
 }
 
+export interface PropsTarjetaDelegacion {
+  subagente: string
+  pedido: string
+  resultado?: string | undefined
+  esError?: boolean | undefined
+  truncado?: boolean | undefined
+  enCurso?: boolean | undefined
+}
+
+export const TarjetaDelegacion: React.FC<PropsTarjetaDelegacion> = ({
+  subagente,
+  pedido,
+  resultado,
+  esError = false,
+  truncado = false,
+  enCurso = false,
+}) => (
+  <Box
+    flexDirection="column"
+    borderStyle="double"
+    borderColor={esError ? 'red' : enCurso ? 'magenta' : 'blue'}
+    paddingX={1}
+    marginY={1}
+  >
+    <Box>
+      <Text bold color={esError ? 'red' : 'magenta'}>
+        {enCurso ? '◈' : '◆'} subagente: {subagente}
+      </Text>
+      {enCurso ? <Text color="yellow"> · investigando</Text> : null}
+    </Box>
+    {pedido ? <Text color="gray">pedido: {pedido}</Text> : null}
+    {resultado !== undefined ? (
+      <Box marginTop={1}>
+        {esError ? (
+          <Text color="red">{resultado}</Text>
+        ) : (
+          <Text>{resultado}</Text>
+        )}
+      </Box>
+    ) : null}
+    {truncado ? <Text color="yellow">resultado truncado</Text> : null}
+  </Box>
+)
+
 export const TarjetaHerramientaEnCurso: React.FC<{
   herramienta: HerramientaEnCurso
-}> = ({ herramienta }) => (
-  <TarjetaHerramienta
-    nombre={herramienta.nombre}
-    argumentos={herramienta.argumentos}
-    enCurso
-  />
-)
+}> = ({ herramienta }) => {
+  const enCurso = !herramienta.completada
+  if (herramienta.nombre === 'task') {
+    return (
+      <TarjetaDelegacion
+        subagente={String(herramienta.argumentos.agent ?? 'subagente')}
+        pedido={String(herramienta.argumentos.prompt ?? '')}
+        resultado={herramienta.resultado}
+        esError={herramienta.esError}
+        truncado={herramienta.truncado}
+        enCurso={enCurso}
+      />
+    )
+  }
+
+  return (
+    <TarjetaHerramienta
+      nombre={herramienta.nombre}
+      argumentos={herramienta.argumentos}
+      resultado={herramienta.resultado}
+      esError={herramienta.esError}
+      truncado={herramienta.truncado}
+      enCurso={enCurso}
+    />
+  )
+}
 
 export const ComponenteElemento: React.FC<{ elemento: ElementoVisual }> = ({
   elemento,
@@ -143,6 +208,18 @@ export const ComponenteElemento: React.FC<{ elemento: ElementoVisual }> = ({
 
   if (elemento.tipo === 'asistente') {
     return <MensajeAsistente texto={elemento.texto} />
+  }
+
+  if (elemento.tipo === 'delegacion') {
+    return (
+      <TarjetaDelegacion
+        subagente={elemento.subagente}
+        pedido={elemento.pedido}
+        resultado={elemento.resultado}
+        esError={elemento.esError}
+        truncado={elemento.truncado}
+      />
+    )
   }
 
   if (elemento.tipo === 'herramienta') {
@@ -174,6 +251,13 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({
     contexto.limitePresupuesto,
   )}`
   const porcentaje = Math.round(contexto.porcentajeUso)
+  const etiquetaEstado = estado.esperandoAprobacion
+    ? 'esperando aprobación'
+    : estado.turnoEnCurso
+      ? 'trabajando'
+      : 'listo'
+  const agente = estado.agenteActivo || 'build'
+
   return (
     <Box
       borderStyle="single"
@@ -182,7 +266,7 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({
       paddingX={1}
     >
       <Text bold color="cyan">
-        ◆ {estado.modeloActivo || 'sin modelo'}
+        ◆ {estado.modeloActivo || 'sin modelo'} · [{agente}]
       </Text>
       {directorio ? (
         <Text color="gray" wrap="truncate">
@@ -190,7 +274,7 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({
         </Text>
       ) : null}
       <Text color={estado.turnoEnCurso ? 'yellow' : 'green'}>
-        {estado.turnoEnCurso ? 'trabajando' : 'listo'} · {uso} ({porcentaje}%
+        {etiquetaEstado} · {uso} ({porcentaje}%
         {contexto.esEstimado ? ' est.' : ''})
       </Text>
     </Box>
@@ -255,10 +339,13 @@ export const PanelAyuda: React.FC = () => (
     <Text bold color="cyan">
       Ayuda
     </Text>
-    <Text>Enter enviar · Shift+Enter nueva línea · Ctrl+J alternativa</Text>
+    <Text>Enter enviar · Shift+Enter nueva línea · Tab cambiar agente</Text>
     <Text>↑/↓ historial de pedidos · / abre la paleta de comandos</Text>
     <Text>Ctrl+C cancela el turno o cierra · Ctrl+D cierra</Text>
-    <Text>/modelo elige el modelo · /contexto muestra el uso</Text>
+    <Text>
+      /agente elige el agente · /modelo elige el modelo · /contexto muestra el
+      uso
+    </Text>
     <Text color="gray">Esc cierra este panel</Text>
   </Box>
 )
@@ -330,6 +417,64 @@ export const SelectorModelo: React.FC<{
   </Box>
 )
 
+export const SelectorAgente: React.FC<{
+  agentes: readonly DefinicionAgente[]
+  seleccionado: number
+  activo: string
+}> = ({ agentes, seleccionado, activo }) => (
+  <Box
+    flexDirection="column"
+    borderStyle="round"
+    borderColor="green"
+    paddingX={1}
+    marginY={1}
+  >
+    <Text bold color="green">
+      Agente
+    </Text>
+    {agentes.length === 0 ? (
+      <Text color="gray">Sin agentes primarios</Text>
+    ) : (
+      agentes.map((agente, indice) => (
+        <Text
+          key={agente.nombre}
+          color={indice === seleccionado ? 'green' : 'white'}
+          inverse={indice === seleccionado}
+        >
+          {indice === seleccionado ? '›' : ' '}{' '}
+          {agente.nombre === activo ? '●' : '○'} {agente.nombre}{' '}
+          <Text color="gray">{agente.descripcion}</Text>
+        </Text>
+      ))
+    )}
+    <Text color="gray">↑/↓ elegir · Enter activar · Esc cerrar</Text>
+  </Box>
+)
+
+export const PanelAprobacion: React.FC<{
+  solicitud: SolicitudAprobacion
+}> = ({ solicitud }) => (
+  <Box
+    flexDirection="column"
+    borderStyle="round"
+    borderColor="yellow"
+    paddingX={1}
+    marginY={1}
+  >
+    <Text bold color="yellow">
+      Aprobación requerida
+    </Text>
+    <Text>
+      Acción: <Text bold>{solicitud.accion}</Text> · Recurso:{' '}
+      <Text bold>{solicitud.recurso}</Text>
+    </Text>
+    <Text color="gray">Patrón sugerido: {solicitud.patronSugerido}</Text>
+    <Text>
+      [1 / y] Aprobar una vez · [2 / a] Aprobar siempre · [3 / n / Esc] Denegar
+    </Text>
+  </Box>
+)
+
 export const CajaEntrada: React.FC<{
   entrada: { buffer: string; cursor: number }
   turnoEnCurso: boolean
@@ -387,13 +532,20 @@ export const PieAtajos: React.FC<{ turnoEnCurso: boolean }> = ({
   <Text color="gray">
     {turnoEnCurso
       ? 'Ctrl+C cancela el turno · esperá a que termine para enviar otro pedido'
-      : 'Enter envía · Shift+Enter nueva línea · ↑/↓ historial · / comandos · Ctrl+D sale'}
+      : 'Enter envía · Shift+Enter nueva línea · Tab agente · ↑/↓ historial · / comandos · Ctrl+D sale'}
   </Text>
 )
 
 export const AppHarness: React.FC<{ estado: EstadoSesionVisual }> = ({
   estado,
 }) => {
+  const tarjetasActivas =
+    estado.herramientasEnCurso && estado.herramientasEnCurso.length > 0
+      ? estado.herramientasEnCurso
+      : estado.herramientaEnCurso
+        ? [estado.herramientaEnCurso]
+        : []
+
   return (
     <Box flexDirection="column" padding={1}>
       <BarraEstado estado={estado} />
@@ -407,13 +559,20 @@ export const AppHarness: React.FC<{ estado: EstadoSesionVisual }> = ({
         <MensajeAsistente texto={estado.textoStreamingActual} enCurso />
       )}
 
-      {estado.herramientaEnCurso && (
-        <TarjetaHerramientaEnCurso herramienta={estado.herramientaEnCurso} />
+      {tarjetasActivas.map((herramienta) => (
+        <TarjetaHerramientaEnCurso
+          key={herramienta.id}
+          herramienta={herramienta}
+        />
+      ))}
+
+      {estado.aprobacionPendiente && (
+        <PanelAprobacion solicitud={estado.aprobacionPendiente} />
       )}
 
-      {estado.turnoEnCurso && !estado.herramientaEnCurso && (
-        <Text color="gray">Pensando…</Text>
-      )}
+      {estado.turnoEnCurso &&
+        tarjetasActivas.length === 0 &&
+        !estado.aprobacionPendiente && <Text color="gray">Pensando…</Text>}
     </Box>
   )
 }

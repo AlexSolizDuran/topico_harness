@@ -9,9 +9,11 @@ import {
   ComponentePromptSistema,
   MensajeAsistente,
   PaletaComandos,
+  PanelAprobacion,
   PanelAyuda,
   PanelContexto,
   PieAtajos,
+  SelectorAgente,
   SelectorModelo,
   TarjetaHerramientaEnCurso,
 } from './app.js'
@@ -50,13 +52,19 @@ export function AppInteractiva({
   const [selectorModeloAbierto, setSelectorModeloAbierto] = useState(false)
   const [indiceModelo, setIndiceModelo] = useState(0)
   const [filtroModelo, setFiltroModelo] = useState('')
+  const [selectorAgenteAbierto, setSelectorAgenteAbierto] = useState(false)
+  const [indiceAgente, setIndiceAgente] = useState(0)
   const [panel, setPanel] = useState<'contexto' | 'ayuda' | null>(null)
   const enviandoRef = useRef(false)
   const inicialEnviado = useRef(false)
 
   useEffect(() => {
     sesion.establecerActualizador((nuevo) => {
-      setEstado({ ...nuevo, historial: [...nuevo.historial] })
+      setEstado({
+        ...nuevo,
+        historial: [...nuevo.historial],
+        herramientasEnCurso: [...(nuevo.herramientasEnCurso ?? [])],
+      })
     })
     return () => sesion.establecerActualizador(undefined)
   }, [sesion])
@@ -64,6 +72,8 @@ export function AppInteractiva({
   const paletaAbierta =
     panel === null &&
     !selectorModeloAbierto &&
+    !selectorAgenteAbierto &&
+    !estado.aprobacionPendiente &&
     entrada.buffer.startsWith('/') &&
     !entrada.buffer.includes(' ')
   const filtroPaleta = entrada.buffer.startsWith('/')
@@ -85,6 +95,12 @@ export function AppInteractiva({
     modelosFiltrados.length === 0
       ? 0
       : Math.min(indiceModelo, modelosFiltrados.length - 1)
+
+  const agentesPrimarios = sesion.listarAgentes()
+  const indiceAgenteSeguro =
+    agentesPrimarios.length === 0
+      ? 0
+      : Math.min(indiceAgente, agentesPrimarios.length - 1)
 
   const enviar = async (texto: string): Promise<void> => {
     if (enviandoRef.current) return
@@ -144,8 +160,48 @@ export function AppInteractiva({
     }
   }
 
+  const abrirSelectorAgente = (): void => {
+    if (sesion.obtenerEstado().turnoEnCurso) {
+      setAviso('No se puede cambiar de agente durante un turno.')
+      return
+    }
+    setIndiceAgente(0)
+    setSelectorAgenteAbierto(true)
+    setAviso('')
+  }
+
+  const seleccionarAgente = (): void => {
+    const elegido = agentesPrimarios[indiceAgenteSeguro]
+    if (!elegido) return
+    try {
+      sesion.cambiarAgente(elegido.nombre)
+      setSelectorAgenteAbierto(false)
+      setAviso(`Agente activo: ${sesion.obtenerAgenteActivo()}`)
+    } catch (error) {
+      setAviso(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   const ejecutarComando = (comando: string, argumentos: string): void => {
     const id = comando.toLowerCase()
+
+    if (id === 'agente' || id === 'agent') {
+      if (!argumentos) {
+        abrirSelectorAgente()
+        return
+      }
+      if (sesion.obtenerEstado().turnoEnCurso) {
+        setAviso('No se puede cambiar de agente durante un turno.')
+        return
+      }
+      try {
+        sesion.cambiarAgente(argumentos)
+        setAviso(`Agente activo: ${sesion.obtenerAgenteActivo()}`)
+      } catch (error) {
+        setAviso(error instanceof Error ? error.message : String(error))
+      }
+      return
+    }
 
     if (id === 'modelo' || id === 'model') {
       if (!argumentos) {
@@ -184,8 +240,48 @@ export function AppInteractiva({
   }
 
   useInput((input, key) => {
+    if (estado.aprobacionPendiente) {
+      if (key.ctrl && input === 'c') {
+        sesion.cancelar()
+        return
+      }
+      if (input === '1' || input === 'y' || input === 's') {
+        sesion.responderAprobacion('una_vez')
+        return
+      }
+      if (input === '2' || input === 'a') {
+        sesion.responderAprobacion('siempre')
+        return
+      }
+      if (input === '3' || input === 'n' || key.escape) {
+        sesion.responderAprobacion('denegar')
+      }
+      return
+    }
+
     if (panel !== null) {
       if (key.escape) setPanel(null)
+      return
+    }
+
+    if (selectorAgenteAbierto) {
+      if (key.escape) {
+        setSelectorAgenteAbierto(false)
+        return
+      }
+      if (key.upArrow) {
+        setIndiceAgente((actual) => Math.max(0, actual - 1))
+        return
+      }
+      if (key.downArrow) {
+        setIndiceAgente((actual) =>
+          Math.min(agentesPrimarios.length - 1, actual + 1),
+        )
+        return
+      }
+      if (key.return) {
+        seleccionarAgente()
+      }
       return
     }
 
@@ -277,6 +373,20 @@ export function AppInteractiva({
 
     const resultado = aplicarTecla(entrada, input, key)
 
+    if (resultado.tipo === 'cambiar_agente') {
+      if (sesion.obtenerEstado().turnoEnCurso) {
+        setAviso('No se puede cambiar de agente durante un turno.')
+        return
+      }
+      try {
+        const nuevoAgente = sesion.ciclarAgente()
+        setAviso(`Agente activo: ${nuevoAgente}`)
+      } catch (error) {
+        setAviso(error instanceof Error ? error.message : String(error))
+      }
+      return
+    }
+
     if (resultado.tipo === 'cancelar') {
       if (sesion.obtenerEstado().turnoEnCurso) {
         sesion.cancelar()
@@ -322,6 +432,13 @@ export function AppInteractiva({
     setIndicePaleta(0)
   })
 
+  const tarjetasActivas =
+    estado.herramientasEnCurso && estado.herramientasEnCurso.length > 0
+      ? estado.herramientasEnCurso
+      : estado.herramientaEnCurso
+        ? [estado.herramientaEnCurso]
+        : []
+
   return (
     <Box flexDirection="column">
       <BarraEstado estado={estado} directorio={directorio} />
@@ -337,18 +454,34 @@ export function AppInteractiva({
         <MensajeAsistente texto={estado.textoStreamingActual} enCurso />
       )}
 
-      {estado.herramientaEnCurso && (
-        <TarjetaHerramientaEnCurso herramienta={estado.herramientaEnCurso} />
+      {tarjetasActivas.map((herramienta) => (
+        <TarjetaHerramientaEnCurso
+          key={herramienta.id}
+          herramienta={herramienta}
+        />
+      ))}
+
+      {estado.aprobacionPendiente && (
+        <PanelAprobacion solicitud={estado.aprobacionPendiente} />
       )}
 
       {estado.turnoEnCurso &&
-        !estado.herramientaEnCurso &&
+        tarjetasActivas.length === 0 &&
+        !estado.aprobacionPendiente &&
         estado.textoStreamingActual.length === 0 && (
           <Text color="gray">Pensando…</Text>
         )}
 
       {panel === 'contexto' && <PanelContexto metricas={estado.contexto} />}
       {panel === 'ayuda' && <PanelAyuda />}
+
+      {selectorAgenteAbierto && (
+        <SelectorAgente
+          agentes={agentesPrimarios}
+          seleccionado={indiceAgenteSeguro}
+          activo={estado.agenteActivo}
+        />
+      )}
 
       {selectorModeloAbierto && (
         <SelectorModelo

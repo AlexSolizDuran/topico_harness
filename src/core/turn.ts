@@ -4,10 +4,12 @@ import type {
   EstadoTurno,
   EventoTurno,
   Mensaje,
+  PorteroPermisos,
   SolicitudHerramienta,
 } from '../types.js'
-import { despacharHerramienta } from './dispatch.js'
+import { ejecutarTandasDeHerramientas } from './batches.js'
 import { clonarHistorial, validarHistorialAtomico } from './history.js'
+import { DetectorLoops } from './loops.js'
 import type { RegistroHerramientas } from './registry.js'
 
 export const LIMITE_PASOS_POR_DEFECTO = 25
@@ -28,6 +30,8 @@ export interface OpcionesTurno {
   senalCancelacion?: AbortSignal | undefined
   credencialesSanitizar?: string[] | undefined
   prepararHistorial?: PrepararHistorial | undefined
+  portero?: PorteroPermisos | undefined
+  enTurnoHijo?: boolean | undefined
 }
 
 interface ResultadoPasoProveedor {
@@ -36,6 +40,18 @@ interface ResultadoPasoProveedor {
   textoTurno: string
   llamadasHerramientas: SolicitudHerramienta[]
   tokens?: ConteoTokens | undefined
+}
+
+function prepararHistorialAntesDeEnviar(
+  opciones: OpcionesTurno,
+  historial: Mensaje[],
+): string | undefined {
+  const preparado = opciones.prepararHistorial?.(historial)
+  if (preparado && preparado.mensajes !== historial) {
+    historial.splice(0, historial.length, ...preparado.mensajes)
+    validarHistorialAtomico(historial)
+  }
+  return preparado?.error
 }
 
 async function* consultarProveedor(
@@ -47,15 +63,11 @@ async function* consultarProveedor(
   let tokens: ConteoTokens | undefined
 
   try {
-    const preparado = opciones.prepararHistorial?.(historial)
-    if (preparado && preparado.mensajes !== historial) {
-      historial.splice(0, historial.length, ...preparado.mensajes)
-      validarHistorialAtomico(historial)
-    }
-    if (preparado?.error) {
+    const errorPrep = prepararHistorialAntesDeEnviar(opciones, historial)
+    if (errorPrep) {
       return {
         cancelado: false,
-        error: new Error(preparado.error),
+        error: new Error(errorPrep),
         textoTurno,
         llamadasHerramientas,
         tokens,
@@ -72,14 +84,8 @@ async function* consultarProveedor(
 
     for await (const evento of flujo) {
       if (opciones.senalCancelacion?.aborted) {
-        return {
-          cancelado: true,
-          textoTurno,
-          llamadasHerramientas,
-          tokens,
-        }
+        return { cancelado: true, textoTurno, llamadasHerramientas, tokens }
       }
-
       if (evento.tipo === 'texto') {
         textoTurno += evento.delta
         yield { tipo: 'texto', delta: evento.delta }
@@ -97,12 +103,7 @@ async function* consultarProveedor(
     return { cancelado: false, textoTurno, llamadasHerramientas, tokens }
   } catch (error) {
     if (opciones.senalCancelacion?.aborted) {
-      return {
-        cancelado: true,
-        textoTurno,
-        llamadasHerramientas,
-        tokens,
-      }
+      return { cancelado: true, textoTurno, llamadasHerramientas, tokens }
     }
     return {
       cancelado: false,
@@ -114,48 +115,12 @@ async function* consultarProveedor(
   }
 }
 
-async function* ejecutarLlamadasHerramientas(
-  llamadas: SolicitudHerramienta[],
-  registro: RegistroHerramientas,
-  credenciales: string[] | undefined,
-  historial: Mensaje[],
-): AsyncGenerator<EventoTurno, void, unknown> {
-  for (const llamada of llamadas) {
-    yield {
-      tipo: 'herramienta_inicio',
-      id: llamada.id,
-      nombre: llamada.nombre,
-      argumentos: llamada.argumentos,
-    }
-
-    const despacho = await despacharHerramienta(
-      llamada.nombre,
-      llamada.argumentos,
-      registro,
-      credenciales,
-    )
-
-    yield {
-      tipo: 'herramienta_fin',
-      id: llamada.id,
-      nombre: llamada.nombre,
-      resultado: despacho.resultado,
-      esError: despacho.esError,
-    }
-
-    historial.push({
-      rol: 'tool',
-      idLlamada: llamada.id,
-      resultado: despacho.resultado,
-    })
-  }
-}
-
 async function* ejecutarUnPaso(
   paso: number,
   maxPasos: number,
   opciones: OpcionesTurno,
   historial: Mensaje[],
+  detectorLoops: DetectorLoops,
 ): AsyncGenerator<EventoTurno, EstadoTurno | undefined, unknown> {
   yield { tipo: 'paso_inicio', paso }
 
@@ -163,15 +128,7 @@ async function* ejecutarUnPaso(
     return { tipo: 'cancelado', mensajes: historial, pasosEjecutados: paso - 1 }
   }
 
-  const genProveedor = consultarProveedor(opciones, historial)
-  let pasoRes = await genProveedor.next()
-
-  while (!pasoRes.done) {
-    yield pasoRes.value
-    pasoRes = await genProveedor.next()
-  }
-
-  const resProveedor = pasoRes.value
+  const resProveedor = yield* consultarProveedor(opciones, historial)
 
   if (resProveedor.cancelado) {
     return {
@@ -211,12 +168,24 @@ async function* ejecutarUnPaso(
     }
   }
 
-  yield* ejecutarLlamadasHerramientas(
-    resProveedor.llamadasHerramientas,
-    opciones.registro,
-    opciones.credencialesSanitizar,
+  const resTandas = yield* ejecutarTandasDeHerramientas({
+    llamadas: resProveedor.llamadasHerramientas,
+    registro: opciones.registro,
+    credenciales: opciones.credencialesSanitizar,
+    senalCancelacion: opciones.senalCancelacion,
+    portero: opciones.portero,
+    detectorLoops,
     historial,
-  )
+  })
+
+  if (resTandas.cancelado) {
+    return {
+      tipo: 'cancelado',
+      mensajes: historial,
+      pasosEjecutados: paso,
+      tokens: resProveedor.tokens,
+    }
+  }
 
   if (paso >= maxPasos) {
     yield { tipo: 'limite_pasos_alcanzado', pasos: paso }
@@ -245,6 +214,7 @@ export async function* ejecutarTurno(
 ): AsyncGenerator<EventoTurno, EstadoTurno, unknown> {
   const maxPasos = opciones.limitePasos ?? LIMITE_PASOS_POR_DEFECTO
   const historial: Mensaje[] = clonarHistorial(opciones.mensajes)
+  const detectorLoops = new DetectorLoops()
 
   validarHistorialAtomico(historial)
 
@@ -256,16 +226,15 @@ export async function* ejecutarTurno(
 
   while (paso < maxPasos) {
     paso++
-    const genPaso = ejecutarUnPaso(paso, maxPasos, opciones, historial)
-    let iter = await genPaso.next()
-
-    while (!iter.done) {
-      yield iter.value
-      iter = await genPaso.next()
-    }
-
-    if (iter.value) {
-      return iter.value
+    const resultadoPaso = yield* ejecutarUnPaso(
+      paso,
+      maxPasos,
+      opciones,
+      historial,
+      detectorLoops,
+    )
+    if (resultadoPaso) {
+      return resultadoPaso
     }
   }
 

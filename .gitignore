@@ -21,6 +21,7 @@ dist/
 coverage/
 
 # Configuracion local del harness: modelos, cabeceras y credenciales propias.
-# El ejemplo SI se versiona; el archivo real y el estado local no.
+# El ejemplo y los agentes SI se versionan; el archivo real y el estado local no.
 .harness/*
 !.harness/config.example.json
+!.harness/agents.json
