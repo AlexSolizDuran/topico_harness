@@ -5,6 +5,76 @@
 
 export type RolMensaje = 'user' | 'assistant' | 'tool' | 'system'
 
+export type AccionPermisoCanon =
+  | 'read'
+  | 'glob'
+  | 'grep'
+  | 'edit'
+  | 'shell'
+  | 'subagent'
+  | 'external_directory'
+
+export type AccionPermiso =
+  | AccionPermisoCanon
+  | 'leer'
+  | 'buscar_archivos'
+  | 'buscar archivos'
+  | 'buscar_texto'
+  | 'buscar texto'
+  | 'editar'
+  | 'ejecutar'
+  | 'delegar'
+  | 'directorio_externo'
+  | 'directorio externo'
+  | '*'
+
+export type EfectoPermiso = 'permitir' | 'consultar' | 'denegar'
+
+export interface ReglaPermiso {
+  accion: AccionPermiso
+  recurso: string
+  efecto: EfectoPermiso
+}
+
+export type DecisionAprobacion = 'una_vez' | 'siempre' | 'denegar'
+
+export interface SolicitudAprobacion {
+  id: string
+  herramienta: string
+  accion: AccionPermisoCanon
+  recurso: string
+  patronSugerido: string
+}
+
+export interface EvaluacionPermiso {
+  efecto: EfectoPermiso
+  accion: AccionPermisoCanon
+  recurso: string
+  patronSugerido: string
+}
+
+export interface PorteroPermisos {
+  evaluar: (
+    herramienta: {
+      nombre: string
+      accionPermiso?: AccionPermiso | undefined
+      obtenerRecurso?:
+        | ((args: Record<string, unknown>) => string | string[])
+        | undefined
+      proponerPatron?:
+        | ((args: Record<string, unknown>, recurso: string) => string)
+        | undefined
+    },
+    argumentos: Record<string, unknown>,
+  ) => EvaluacionPermiso
+  solicitarAprobacion?:
+    | ((
+        solicitud: SolicitudAprobacion,
+        senalCancelacion?: AbortSignal,
+      ) => Promise<DecisionAprobacion>)
+    | undefined
+}
+
 export interface SolicitudHerramienta {
   id: string
   nombre: string
@@ -63,6 +133,15 @@ export type EventoTurno =
       nombre: string
       resultado: string
       esError: boolean
+    }
+  | {
+      tipo: 'espera_aprobacion'
+      solicitud: SolicitudAprobacion
+    }
+  | {
+      tipo: 'fin_espera_aprobacion'
+      id: string
+      decision: DecisionAprobacion
     }
   | {
       tipo: 'limite_pasos_alcanzado'

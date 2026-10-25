@@ -15,6 +15,7 @@ function partesRuta(ruta: string): string[] {
 }
 
 function esArchivoDeEntorno(nombre: string): boolean {
+  if (nombre.endsWith('.env.example')) return false
   return nombre === '.env' || nombre.startsWith('.env.')
 }
 

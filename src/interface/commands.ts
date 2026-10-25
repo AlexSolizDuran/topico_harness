@@ -7,6 +7,12 @@ export interface ComandoUi {
 
 export const COMANDOS: readonly ComandoUi[] = [
   {
+    id: 'agente',
+    etiqueta: '/agente',
+    descripcion: 'Elegir el agente primario activo o cambiarlo',
+    alias: ['agent'],
+  },
+  {
     id: 'modelo',
     etiqueta: '/modelo',
     descripcion: 'Elegir el modelo activo o cambiarlo',

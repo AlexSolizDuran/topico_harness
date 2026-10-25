@@ -1,3 +1,12 @@
+import {
+  crearAgentesPorDefecto,
+  listarAgentesPrimarios,
+  siguienteAgentePrimario,
+} from '../agents/defaults.js'
+import {
+  type DefinicionAgente,
+  esAgentePrimario,
+} from '../agents/definiciones.js'
 import { PresupuestoContexto } from '../context/budget.js'
 import {
   type MetricasContexto,
@@ -12,9 +21,20 @@ import {
 import { recortarSalidasHerramientasViejas } from '../context/trimming.js'
 import type { RegistroHerramientas } from '../core/registry.js'
 import { ejecutarTurno, type PreparacionHistorial } from '../core/turn.js'
+import {
+  GestorPermisos,
+  type ManejadorAprobacionCliente,
+} from '../permissions/portero.js'
 import { sanitizarTexto } from '../provider/credentials.js'
 import type { Proveedor } from '../provider/types.js'
-import type { EstadoTurno, Mensaje } from '../types.js'
+import type {
+  DecisionAprobacion,
+  EstadoTurno,
+  Mensaje,
+  PorteroPermisos,
+  ReglaPermiso,
+  SolicitudAprobacion,
+} from '../types.js'
 import {
   aplicarEventoTurno,
   crearEstadoInicial,
@@ -34,6 +54,13 @@ export class ErrorCambioModelo extends Error {
   constructor(mensaje: string) {
     super(mensaje)
     this.name = 'ErrorCambioModelo'
+  }
+}
+
+export class ErrorCambioAgente extends Error {
+  constructor(mensaje: string) {
+    super(mensaje)
+    this.name = 'ErrorCambioAgente'
   }
 }
 
@@ -59,11 +86,17 @@ export interface OpcionesSesion {
   modelosDisponibles?: string[] | undefined
   modeloActivo?: string | undefined
   fabricaProveedor?: FabricaProveedor | undefined
+  agentes?: DefinicionAgente[] | undefined
+  agenteActivo?: string | undefined
+  directorioProyecto?: string | undefined
+  reglasPermiso?: ReglaPermiso[] | undefined
+  portero?: PorteroPermisos | undefined
+  manejadorAprobacion?: ManejadorAprobacionCliente | undefined
 }
 
 /**
  * Orquesta la sesión entre el usuario y el núcleo: turno, cancelación,
- * presupuesto de contexto y cambio de modelo entre turnos.
+ * presupuesto de contexto, cambio de modelo, agente activo y aprobaciones.
  */
 export class SesionInteractiva {
   private estado: EstadoSesionVisual
@@ -83,6 +116,15 @@ export class SesionInteractiva {
   private tokensAcumulados = 0
   private ultimaCompactacion?: ResumenCompactacion | undefined
   private metricas: MetricasContexto
+  private promptSistemaBase: string
+  private agentes: DefinicionAgente[]
+  private agentesExplicito: boolean
+  private agenteActivo: string
+  private gestorPermisos: GestorPermisos
+  private porteroExterno?: PorteroPermisos | undefined
+  private resolverAprobacionActiva?:
+    | ((decision: DecisionAprobacion) => void)
+    | undefined
 
   constructor(opciones: OpcionesSesion) {
     this.proveedor = opciones.proveedor
@@ -99,13 +141,77 @@ export class SesionInteractiva {
         ? `${opciones.proveedor.nombre}/${opciones.proveedor.modelo}`
         : '')
     this.fabricaProveedor = opciones.fabricaProveedor
+    this.promptSistemaBase = opciones.promptSistema ?? ''
+    this.agentesExplicito = Boolean(opciones.agentes)
+    this.agentes =
+      opciones.agentes && opciones.agentes.length > 0
+        ? [...opciones.agentes]
+        : crearAgentesPorDefecto(this.registro.listarNombres())
+
+    const primarios = listarAgentesPrimarios(this.agentes)
+    const inicial = opciones.agenteActivo ?? primarios[0]?.nombre ?? 'build'
+    const defInicial = this.agentes.find((a) => a.nombre === inicial)
+    if (defInicial && !esAgentePrimario(defInicial)) {
+      throw new ErrorCambioAgente(
+        `El agente '${inicial}' no es un agente primario.`,
+      )
+    }
+    this.agenteActivo = defInicial?.nombre ?? primarios[0]?.nombre ?? 'build'
+
+    this.porteroExterno = opciones.portero
+    this.gestorPermisos = new GestorPermisos({
+      directorioProyecto: opciones.directorioProyecto,
+      reglasGlobales: opciones.reglasPermiso,
+      reglasAgente: defInicial?.permisos,
+      esInteractivo: opciones.esInteractivo ?? true,
+      manejadorAprobacion:
+        opciones.manejadorAprobacion ??
+        ((solicitud, senal) => this.esperarDecisionUsuario(solicitud, senal)),
+    })
+
     this.metricas = this.calcularMetricas()
     this.estado = crearEstadoInicial(
-      opciones.promptSistema ?? '',
+      this.componerPromptEfectivo(defInicial),
       this.modeloActivo,
       this.metricas,
+      this.agenteActivo,
     )
     this.alActualizar = opciones.alActualizar
+  }
+
+  private componerPromptEfectivo(agente?: DefinicionAgente): string {
+    const propio = agente?.prompt?.trim() ?? ''
+    if (this.promptSistemaBase && propio) {
+      return `${this.promptSistemaBase}\n\n${propio}`
+    }
+    return propio || this.promptSistemaBase
+  }
+
+  private esperarDecisionUsuario(
+    _solicitud: SolicitudAprobacion,
+    senal?: AbortSignal,
+  ): Promise<DecisionAprobacion> {
+    return new Promise<DecisionAprobacion>((resolve) => {
+      const finalizar = (decision: DecisionAprobacion): void => {
+        this.resolverAprobacionActiva = undefined
+        if (senal) {
+          senal.removeEventListener('abort', alAbortar)
+        }
+        resolve(decision)
+      }
+      const alAbortar = (): void => finalizar('denegar')
+      if (senal) {
+        senal.addEventListener('abort', alAbortar, { once: true })
+      }
+      this.resolverAprobacionActiva = finalizar
+    })
+  }
+
+  responderAprobacion(decision: DecisionAprobacion): void {
+    const resolver = this.resolverAprobacionActiva
+    if (resolver) {
+      resolver(decision)
+    }
   }
 
   obtenerEstado(): EstadoSesionVisual {
@@ -126,6 +232,26 @@ export class SesionInteractiva {
 
   listarModelos(): string[] {
     return [...this.modelosDisponibles]
+  }
+
+  obtenerAgenteActivo(): string {
+    return this.agenteActivo
+  }
+
+  obtenerDefinicionAgenteActivo(): DefinicionAgente | undefined {
+    return this.agentes.find((a) => a.nombre === this.agenteActivo)
+  }
+
+  listarAgentes(): DefinicionAgente[] {
+    return listarAgentesPrimarios(this.agentes)
+  }
+
+  listarTodosLosAgentes(): DefinicionAgente[] {
+    return [...this.agentes]
+  }
+
+  obtenerGestorPermisos(): GestorPermisos {
+    return this.gestorPermisos
   }
 
   establecerActualizador(
@@ -183,11 +309,6 @@ export class SesionInteractiva {
     ]).tokens
   }
 
-  /**
-   * Compacta al final del turno, nunca entre pasos. Primero recorta lo barato;
-   * solo resume si el recorte no alcanza. Repite la compactación si el historial
-   * todavía no entra en el presupuesto.
-   */
   private procesarContexto(): void {
     const antes = calcularTokensHistorial(
       this.mensajesHistorial,
@@ -227,10 +348,6 @@ export class SesionInteractiva {
     }
   }
 
-  /**
-   * Se ejecuta antes de cada petición del turno. El núcleo no conoce el
-   * presupuesto: la sesión le entrega el historial ya preparado o un error.
-   */
   private prepararHistorialPaso(mensajes: Mensaje[]): PreparacionHistorial {
     const medicion = calcularTokensHistorial(mensajes)
     if (!this.presupuesto.estaCercaDelLimite(medicion.tokens)) {
@@ -247,6 +364,32 @@ export class SesionInteractiva {
       mensajes: recortados,
       error: `El historial de este turno superó el presupuesto (${trasRecorte.tokens} > ${this.presupuesto.limitePresupuesto}). El turno se detuvo antes de enviar una petición que excediera el límite.`,
     }
+  }
+
+  private obtenerRegistroDelTurno(
+    agente: DefinicionAgente | undefined,
+  ): RegistroHerramientas {
+    if (!agente) return this.registro
+    if (!this.agentesExplicito && agente.nombre === 'build') {
+      return this.registro
+    }
+    return this.registro.filtrar(agente.herramientas)
+  }
+
+  private obtenerProveedorDelTurno(
+    agente: DefinicionAgente | undefined,
+  ): Proveedor {
+    if (agente?.modelo && this.fabricaProveedor) {
+      const barra = agente.modelo.indexOf('/')
+      const proveedorId =
+        barra > 0 ? agente.modelo.slice(0, barra) : this.proveedor.nombre
+      const modeloId =
+        barra > 0 ? agente.modelo.slice(barra + 1) : agente.modelo
+      if (proveedorId && modeloId) {
+        return this.fabricaProveedor(proveedorId, modeloId).proveedor
+      }
+    }
+    return this.proveedor
   }
 
   async enviarMensaje(texto: string): Promise<void> {
@@ -274,16 +417,19 @@ export class SesionInteractiva {
 
     this.mensajesHistorial.push({ rol: 'user', contenido: texto })
     this.controllerActivo = new AbortController()
+    const defAgente = this.obtenerDefinicionAgenteActivo()
+    this.gestorPermisos.establecerReglasAgente(defAgente?.permisos ?? [])
 
     try {
       const generador = ejecutarTurno({
-        proveedor: this.proveedor,
-        registro: this.registro,
+        proveedor: this.obtenerProveedorDelTurno(defAgente),
+        registro: this.obtenerRegistroDelTurno(defAgente),
         mensajes: this.mensajesHistorial,
         sistema: this.estado.promptSistema || undefined,
         senalCancelacion: this.controllerActivo.signal,
         credencialesSanitizar: this.credencialesSanitizar,
         prepararHistorial: (mensajes) => this.prepararHistorialPaso(mensajes),
+        portero: this.porteroExterno ?? this.gestorPermisos,
       })
 
       let iter = await generador.next()
@@ -322,9 +468,39 @@ export class SesionInteractiva {
     }
   }
 
-  /**
-   * Cambio atómico: todo se resuelve antes de tocar el estado de la sesión.
-   */
+  cambiarAgente(nombre: string): void {
+    if (this.estado.turnoEnCurso) {
+      throw new ErrorCambioAgente(
+        'No se puede cambiar de agente mientras hay un turno en curso.',
+      )
+    }
+
+    const agente = this.agentes.find((a) => a.nombre === nombre)
+    if (!agente) {
+      throw new ErrorCambioAgente(`El agente '${nombre}' no está configurado.`)
+    }
+    if (!esAgentePrimario(agente)) {
+      throw new ErrorCambioAgente(
+        `El agente '${nombre}' es un subagente y no puede ser el agente activo de la sesión.`,
+      )
+    }
+
+    this.agenteActivo = agente.nombre
+    this.gestorPermisos.establecerReglasAgente(agente.permisos ?? [])
+    this.estado = {
+      ...this.estado,
+      agenteActivo: agente.nombre,
+      promptSistema: this.componerPromptEfectivo(agente),
+    }
+    this.notificar()
+  }
+
+  ciclarAgente(): string {
+    const siguiente = siguienteAgentePrimario(this.agentes, this.agenteActivo)
+    this.cambiarAgente(siguiente)
+    return this.agenteActivo
+  }
+
   cambiarModelo(id: string): void {
     if (this.estado.turnoEnCurso) {
       throw new ErrorCambioModelo(

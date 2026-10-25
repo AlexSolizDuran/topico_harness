@@ -21,7 +21,6 @@ export class RenderizadorLineaALinea {
   }
 
   mostrarDelta(delta: string): void {
-    // En streaming se acumula o se muestra directo si termina en salto
     this.bufferTexto += delta
   }
 
@@ -44,6 +43,22 @@ export class RenderizadorLineaALinea {
     const truncadoEtiqueta = truncado ? ' [TRUNCADO]' : ''
     this.escritor(
       `[Herramienta: ${nombre}]${estadoEtiqueta}${truncadoEtiqueta}: ${resultado}`,
+    )
+  }
+
+  mostrarDelegacion(
+    subagente: string,
+    pedido: string,
+    resultado: string,
+    esError: boolean,
+    truncado: boolean,
+  ): void {
+    this.fijarMensajeAsistente()
+
+    const estadoEtiqueta = esError ? ' [ERROR]' : ''
+    const truncadoEtiqueta = truncado ? ' [TRUNCADO]' : ''
+    this.escritor(
+      `[Subagente: ${subagente}] (${pedido})${estadoEtiqueta}${truncadoEtiqueta}: ${resultado}`,
     )
   }
 
@@ -78,6 +93,14 @@ export class RenderizadorProgreso {
     } else if (elemento.tipo === 'herramienta') {
       this.render.mostrarHerramienta(
         elemento.nombre,
+        elemento.resultado,
+        elemento.esError,
+        elemento.truncado,
+      )
+    } else if (elemento.tipo === 'delegacion') {
+      this.render.mostrarDelegacion(
+        elemento.subagente,
+        elemento.pedido,
         elemento.resultado,
         elemento.esError,
         elemento.truncado,

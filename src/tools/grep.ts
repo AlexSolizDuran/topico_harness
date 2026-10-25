@@ -66,6 +66,9 @@ export function crearHerramientaGrep(
       },
       required: ['cadena'],
     },
+    accionPermiso: 'grep',
+    obtenerRecurso: (args) => String(args.cadena ?? '*'),
+    admiteParalelo: true,
     ejecutar: async (args) => {
       const cadena = String(args.cadena ?? '')
       if (!cadena) {

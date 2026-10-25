@@ -81,20 +81,21 @@ context: |
     editar el spec.
 
   FLUJO DE ESTE REPO
-    `openspec/specs/` es el contrato acordado: 5 capacidades, 49 requisitos y
-    141 escenarios. Los 9 changes de `openspec/changes/` ya lo implementaron.
+    `openspec/specs/` es el contrato acordado: 8 capacidades, 83 requisitos y
+    251 escenarios. Los 19 changes de `openspec/changes/archive/` ya lo implementaron.
     Los changes IMPLEMENTAN contra esos requisitos, no los vuelven a derivar. Al
     proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
     Los changes que solo materializan comportamiento ya especificado declaran
     `skip_specs: true` en su `.openspec.yaml` (070, 080, 090 y 110). Los que
-    ajustan el contrato traen deltas de spec (060, 100, 120, 130 y 140).
+    ajustan el contrato traen deltas de spec (060, 100, 120, 130, 140, 150, 160,
+    170, 180 y 190).
 
   ESTADO
-    5 capacidades, 49 requisitos, 141 escenarios. Todo validado contra el schema
+    8 capacidades, 83 requisitos, 251 escenarios. Todo validado contra el schema
     `spec-driven`.
-    core (9) · provider (7) · tools (11) · context (9) · interface (13)
-    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 187 tests
+    core (12) · provider (7) · tools (14) · context (10) · interface (17) · agents (6) · subagents (9) · permissions (8)
+    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 300 tests
     y `npm run build` genera `dist/main.js`. La prueba de punta a punta contra
     OpenRouter paso en modo plano, con lectura real de archivos y cambio de
     modelo por `--modelo`.

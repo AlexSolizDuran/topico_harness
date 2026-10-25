@@ -29,11 +29,18 @@ function leerEntradaEstandar(): string {
 function prepararSesion(
   args: Argumentos,
   directorio: string,
+  esInteractivo: boolean,
 ): { sesion: Sesion } | { error: string } {
   try {
-    const { sesion } = construirHarness({ directorioProyecto: directorio })
+    const { sesion } = construirHarness({
+      directorioProyecto: directorio,
+      esInteractivo,
+    })
     if (args.modelo) {
       sesion.cambiarModelo(args.modelo)
+    }
+    if (args.agente) {
+      sesion.cambiarAgente(args.agente)
     }
     return { sesion }
   } catch (error) {
@@ -86,16 +93,18 @@ async function main(): Promise<number> {
     return 1
   }
 
-  const preparado = prepararSesion(args, directorio)
+  const pedido =
+    args.pedido || (process.stdin.isTTY ? '' : leerEntradaEstandar())
+  const interactivo =
+    detectarTerminalInteractiva(process.stdout) &&
+    Boolean(process.stdin.isTTY) &&
+    !pedido
+
+  const preparado = prepararSesion(args, directorio, interactivo)
   if ('error' in preparado) {
     process.stderr.write(`ERROR: ${preparado.error}\n`)
     return 1
   }
-
-  const pedido =
-    args.pedido || (process.stdin.isTTY ? '' : leerEntradaEstandar())
-  const interactivo =
-    detectarTerminalInteractiva(process.stdout) && Boolean(process.stdin.isTTY)
 
   return ejecutarPedido(preparado.sesion, pedido, interactivo, directorio)
 }

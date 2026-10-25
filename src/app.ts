@@ -1,6 +1,15 @@
+import { cargarAgentes } from './agents/cargar.js'
+import {
+  type DefinicionAgente,
+  validarConjuntoAgentes,
+} from './agents/definiciones.js'
 import type { RegistroHerramientas } from './core/registry.js'
 import { type FabricaProveedor, SesionInteractiva } from './interface/runner.js'
 import type { EstadoSesionVisual } from './interface/state.js'
+import {
+  GestorPermisos,
+  type ManejadorAprobacionCliente,
+} from './permissions/portero.js'
 import {
   type ConfiguracionHarness,
   cargarConfig,
@@ -8,7 +17,12 @@ import {
 } from './provider/config.js'
 import { resolverProveedor } from './provider/factory.js'
 import type { Proveedor } from './provider/types.js'
-import { crearCatalogoPorDefecto } from './tools/catalog.js'
+import { crearHerramientaDelegacion } from './subagents/herramienta.js'
+import {
+  crearCatalogoPorDefecto,
+  registrarHerramientaConValidacion,
+} from './tools/catalog.js'
+import type { PorteroPermisos, ReglaPermiso } from './types.js'
 
 export interface OpcionesHarness {
   directorioProyecto?: string | undefined
@@ -22,12 +36,19 @@ export interface OpcionesHarness {
   modeloActivo?: string | undefined
   fabricaProveedor?: FabricaProveedor | undefined
   alActualizar?: ((estado: EstadoSesionVisual) => void) | undefined
+  agentes?: DefinicionAgente[] | undefined
+  agenteActivo?: string | undefined
+  esInteractivo?: boolean | undefined
+  reglasPermiso?: ReglaPermiso[] | undefined
+  portero?: PorteroPermisos | undefined
+  manejadorAprobacion?: ManejadorAprobacionCliente | undefined
 }
 
 export interface HarnessConstruido {
   sesion: SesionInteractiva
   registro: RegistroHerramientas
   proveedor: Proveedor
+  agentes: DefinicionAgente[]
   config?: ConfiguracionHarness | undefined
 }
 
@@ -35,8 +56,8 @@ const PROMPT_SISTEMA_POR_DEFECTO =
   'Sos un agente de programación que trabaja sobre el proyecto actual. Usá las herramientas para leer, buscar, editar y verificar antes de responder. Si una herramienta devuelve un error, leelo y corregí el rumbo. Respondé en el idioma del usuario.'
 
 /**
- * Ensambla catálogo, provider y sesión en un solo lugar, para poder probar el
- * cableado sin spawnear un proceso.
+ * Ensambla catálogo, provider, agentes, permisos y sesión en un solo lugar,
+ * para poder probar el cableado sin spawnear un proceso.
  */
 export function construirHarness(
   opciones: OpcionesHarness = {},
@@ -88,6 +109,61 @@ export function construirHarness(
     modelosDisponibles = [modeloActivo]
   }
 
+  let agentesLista: DefinicionAgente[] = []
+  let sesionRef: SesionInteractiva | undefined
+
+  if (!opciones.registro && !registro.tiene('task')) {
+    const toolTask = crearHerramientaDelegacion({
+      obtenerAgentes: () => agentesLista,
+      obtenerAgenteActivo: () => sesionRef?.obtenerAgenteActivo() ?? 'build',
+      obtenerCatalogo: () => registro,
+      obtenerProveedorPadre: () => proveedor,
+      obtenerVentanaPadre: () => ventanaContexto,
+      resolverModelo: (modelo) => {
+        if (!fabricaProveedor) {
+          return { proveedor, ventanaContexto, credencialesSanitizar }
+        }
+        const barra = modelo.indexOf('/')
+        const provId = barra > 0 ? modelo.slice(0, barra) : proveedor.nombre
+        const modId = barra > 0 ? modelo.slice(barra + 1) : modelo
+        return fabricaProveedor(provId, modId)
+      },
+      obtenerPromptBase: () =>
+        opciones.promptSistema ?? PROMPT_SISTEMA_POR_DEFECTO,
+      obtenerCredenciales: () => credencialesSanitizar,
+      crearPorteroSubagente: (subagente) =>
+        new GestorPermisos({
+          directorioProyecto,
+          reglasGlobales: opciones.reglasPermiso,
+          reglasAgente: subagente.permisos,
+          esInteractivo: opciones.esInteractivo ?? true,
+          manejadorAprobacion: opciones.manejadorAprobacion,
+        }),
+    })
+    registrarHerramientaConValidacion(registro, toolTask)
+  }
+
+  const opcionesValidacion = {
+    herramientasDisponibles: registro.listarNombres(),
+    ...(modelosDisponibles.length > 0 ? { modelosDisponibles } : {}),
+  }
+
+  let agentePorDefecto = 'build'
+  if (opciones.agentes) {
+    agentesLista = validarConjuntoAgentes(opciones.agentes, opcionesValidacion)
+    const primeroPrimario = agentesLista.find(
+      (a) => a.modo === 'primario' || a.modo === 'ambos',
+    )
+    agentePorDefecto = primeroPrimario?.nombre ?? 'build'
+  } else {
+    const cargados = cargarAgentes({
+      ...opcionesValidacion,
+      directorioProyecto,
+    })
+    agentesLista = cargados.agentes
+    agentePorDefecto = cargados.agentePorDefecto
+  }
+
   const sesion = new SesionInteractiva({
     proveedor,
     registro,
@@ -98,7 +174,22 @@ export function construirHarness(
     modeloActivo,
     fabricaProveedor,
     alActualizar: opciones.alActualizar,
+    agentes: agentesLista,
+    agenteActivo: opciones.agenteActivo ?? agentePorDefecto,
+    directorioProyecto,
+    esInteractivo: opciones.esInteractivo,
+    reglasPermiso: opciones.reglasPermiso,
+    portero: opciones.portero,
+    manejadorAprobacion: opciones.manejadorAprobacion,
   })
+  sesionRef = sesion
 
-  return { sesion, registro, proveedor, config }
+  if (
+    opciones.agenteActivo &&
+    opciones.agenteActivo !== sesion.obtenerAgenteActivo()
+  ) {
+    sesion.cambiarAgente(opciones.agenteActivo)
+  }
+
+  return { sesion, registro, proveedor, agentes: agentesLista, config }
 }

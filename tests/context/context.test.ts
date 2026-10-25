@@ -12,7 +12,13 @@ import {
   PresupuestoContexto,
   recortarSalidasHerramientasViejas,
 } from '../../src/context/index.js'
-import { validarHistorialAtomico } from '../../src/core/index.js'
+import {
+  ejecutarTurno,
+  RegistroHerramientas,
+  validarHistorialAtomico,
+} from '../../src/core/index.js'
+import { ProveedorSimulado } from '../../src/provider/index.js'
+import { ejecutarTurnoSubagente } from '../../src/subagents/index.js'
 import type { Mensaje } from '../../src/types.js'
 
 describe('context Specification Tests', () => {
@@ -566,6 +572,132 @@ describe('context Specification Tests', () => {
       expect(metricas.porcentajeUso).toBe(12.5)
       expect(metricas.tokensAcumulados).toBe(120)
       expect(metricas.esEstimado).toBe(true)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: El presupuesto de un subagente es independiente del del padre
+  // --------------------------------------------------------------------------
+  describe('Requirement: El presupuesto de un subagente es independiente del del padre', () => {
+    it('El historial del hijo no consume el presupuesto del padre', async () => {
+      // WHEN un subagente ejecuta varios pasos y produce resultados intermedios extensos
+      const presupuestoPadre = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const historialPadre: Mensaje[] = [
+        { rol: 'user', contenido: 'Explora el repo' },
+      ]
+      const tokensPadreAntes = calcularTokensHistorial(historialPadre).tokens
+
+      const catalogo = new RegistroHerramientas()
+      catalogo.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {
+          type: 'object',
+          properties: { ruta: { type: 'string' } },
+          required: ['ruta'],
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => 'x'.repeat(2000),
+      })
+
+      const proveedorHijo = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: 'h1', nombre: 'read', argumentos: { ruta: 'grande.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Resumen corto del hijo'] },
+        ],
+      })
+
+      const resultadoHijo = await ejecutarTurnoSubagente({
+        subagente: {
+          nombre: 'explore',
+          descripcion: 'Explora',
+          modo: 'subagente',
+          herramientas: ['read'],
+          prompt: 'Explora.',
+        },
+        pedido: 'Busca grande.ts',
+        catalogo,
+        proveedorPadre: proveedorHijo,
+        ventanaContextoPadre: 2000,
+      })
+
+      // THEN esos pasos se evalúan contra el presupuesto propio del hijo y no contra el presupuesto del padre
+      expect(resultadoHijo.esError).toBe(false)
+      expect(calcularTokensHistorial(historialPadre).tokens).toBe(
+        tokensPadreAntes,
+      )
+      expect(
+        presupuestoPadre.estaCercaDelLimite(
+          calcularTokensHistorial(historialPadre).tokens,
+        ),
+      ).toBe(false)
+    })
+
+    it('El resultado del hijo se cuenta como un resultado de herramienta', async () => {
+      // WHEN el subagente termina y devuelve su resultado al padre
+      const presupuestoPadre = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const registroPadre = new RegistroHerramientas()
+      registroPadre.registrar({
+        nombre: 'subagent',
+        descripcion: 'delega',
+        esquema: {
+          type: 'object',
+          properties: {
+            agente: { type: 'string' },
+            pedido: { type: 'string' },
+          },
+          required: ['agente', 'pedido'],
+        },
+        accionPermiso: 'subagent',
+        obtenerRecurso: (args) => String(args.agente ?? '*'),
+        ejecutar: async () => 'Resumen final devuelto por el hijo',
+      })
+
+      const proveedorPadre = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              {
+                id: 'call_sub',
+                nombre: 'subagent',
+                argumentos: { agente: 'explore', pedido: 'Revisa' },
+              },
+            ],
+          },
+          { fragmentosTexto: ['Respuesta del padre'] },
+        ],
+      })
+
+      const generador = ejecutarTurno({
+        proveedor: proveedorPadre,
+        registro: registroPadre,
+        mensajes: [{ rol: 'user', contenido: 'Delega' }],
+      })
+      let iter = await generador.next()
+      while (!iter.done) {
+        iter = await generador.next()
+      }
+      const estado = iter.value
+
+      // THEN el padre contabiliza únicamente ese resultado devuelto dentro de su propio presupuesto
+      const mensajesTool = estado.mensajes.filter((m) => m.rol === 'tool')
+      expect(mensajesTool).toHaveLength(1)
+      expect(mensajesTool[0]?.resultado).toBe(
+        'Resumen final devuelto por el hijo',
+      )
+      const metricas = medirContexto(presupuestoPadre, estado.mensajes)
+      expect(metricas.tokensActuales).toBeGreaterThan(0)
     })
   })
 })

@@ -149,10 +149,11 @@ sistema SHALL aceptar un pedido inicial como argumentos de la invocación.
 - **THEN** el sistema queda a la espera de que la persona escriba
 
 ### Requirement: La interfaz muestra el estado de la sesión
-El sistema SHALL mostrar el modelo activo, el directorio de trabajo y si hay un
-turno en curso. El sistema SHALL actualizar ese estado cuando cambie el modelo o
-cuando empiece o termine un turno. El sistema SHALL NOT presentar el turno como
-inactivo mientras siga en curso.
+El sistema SHALL mostrar el modelo activo, el agente activo, el directorio de
+trabajo y si hay un turno en curso. El sistema SHALL actualizar ese estado cuando
+cambie el modelo, cuando cambie el agente o cuando empiece o termine un turno. El
+sistema SHALL mostrar cuando el turno espera una aprobación. El sistema SHALL NOT
+presentar el turno como inactivo mientras siga en curso.
 
 #### Scenario: Sesión lista
 - **WHEN** no hay un turno en curso
@@ -161,6 +162,14 @@ inactivo mientras siga en curso.
 #### Scenario: Sesión trabajando
 - **WHEN** hay un turno en curso
 - **THEN** la interfaz muestra que está trabajando y no la presenta como lista
+
+#### Scenario: La barra muestra el agente activo
+- **WHEN** la sesión tiene un agente activo
+- **THEN** la barra de estado muestra su nombre junto al modelo
+
+#### Scenario: La barra muestra la espera de aprobación
+- **WHEN** el turno espera una aprobación
+- **THEN** la barra de estado muestra que está esperando una decisión
 
 ### Requirement: La interfaz permite ejecutar comandos desde una lista
 El sistema SHALL ofrecer una lista de comandos disponibles y SHALL permitir
@@ -230,3 +239,88 @@ turno, después de una compactación y después de cambiar de modelo.
 #### Scenario: Cambio de modelo
 - **WHEN** se cambia a un modelo con otra ventana de contexto
 - **THEN** la interfaz actualiza la ventana total y el presupuesto
+
+### Requirement: La interfaz permite cambiar el agente activo
+El sistema SHALL permitir elegir el agente activo entre los agentes primarios. El
+sistema SHALL ofrecer un atajo para ciclar entre ellos y una lista para elegirlos.
+El sistema SHALL NOT ofrecer como agente activo uno que no sea primario. El sistema
+SHALL NOT cambiar de agente durante un turno en curso.
+
+#### Scenario: Cambiar de agente con el atajo
+- **WHEN** la persona usa el atajo de cambio de agente
+- **THEN** el agente activo pasa al siguiente agente primario y la barra lo refleja
+
+#### Scenario: Elegir un agente desde la lista
+- **WHEN** la persona abre la lista de agentes y elige uno
+- **THEN** la sesión lo activa y conserva el historial
+
+#### Scenario: El agente activo se conserva entre turnos
+- **WHEN** un turno termina
+- **THEN** el agente activo sigue siendo el mismo que antes del turno
+
+### Requirement: La interfaz distingue una delegación a un subagente
+La interfaz SHALL distinguir una delegación de una herramienta común. Mientras el
+hijo trabaja SHALL mostrar el nombre del subagente y el pedido. Al terminar SHALL
+mostrar el nombre del subagente y la respuesta como resumen. La interfaz SHALL NOT
+presentar el texto del hijo como stream del padre. La interfaz SHALL mantener la
+distinción en la salida línea a línea.
+
+#### Scenario: La delegación se distingue de una herramienta común
+- **WHEN** el agente delega en un subagente
+- **THEN** la interfaz muestra una tarjeta con el nombre del subagente, distinta de la de una herramienta común
+
+#### Scenario: La delegación terminada muestra el resumen
+- **WHEN** el hijo responde
+- **THEN** la tarjeta muestra el nombre del subagente y la respuesta
+
+#### Scenario: El texto del hijo no aparece en el stream del padre
+- **WHEN** el hijo genera texto intermedio
+- **THEN** ese texto no se agrega al stream del padre
+
+#### Scenario: La distinción se mantiene sin terminal
+- **WHEN** la interfaz degrada a salida línea a línea
+- **THEN** la delegación se marca con el subagente y no como una herramienta común
+
+### Requirement: La interfaz pide aprobación antes de ejecutar una herramienta
+La interfaz SHALL mostrar la acción, el recurso y las opciones de aprobación cuando
+una herramienta lo requiera. La interfaz SHALL ofrecer aprobar una vez, aprobar
+siempre y denegar. La interfaz SHALL NOT ejecutar la herramienta ni asumir una
+decisión. Sin terminal interactiva SHALL denegar la solicitud y explicar el motivo.
+
+#### Scenario: Se pide aprobación con la acción y el recurso
+- **WHEN** una herramienta requiere aprobación
+- **THEN** la interfaz muestra la acción, el recurso y las tres opciones
+
+#### Scenario: Aprobar una vez ejecuta solo esa solicitud
+- **WHEN** la persona elige aprobar una vez
+- **THEN** la herramienta se ejecuta y la siguiente solicitud vuelve a consultar
+
+#### Scenario: Aprobar siempre deja de preguntar para ese patrón
+- **WHEN** la persona elige aprobar siempre
+- **THEN** la interfaz ejecuta la solicitud y no vuelve a preguntar por el patrón guardado
+
+#### Scenario: Denegar devuelve el rechazo y no ejecuta
+- **WHEN** la persona elige denegar
+- **THEN** la herramienta no se ejecuta y el rechazo vuelve al modelo como texto
+
+#### Scenario: Sin terminal interactiva no se aprueba nada
+- **WHEN** una herramienta requiere aprobación y no hay terminal interactiva
+- **THEN** la interfaz no la ejecuta y el motivo vuelve al modelo como texto
+
+### Requirement: La interfaz muestra las herramientas de una tanda
+La interfaz SHALL mostrar una tarjeta por cada llamada de la tanda en cuanto la
+tanda empieza. La interfaz SHALL completar cada tarjeta cuando esa llamada termina,
+en cualquier orden. La interfaz SHALL NOT reordenar las tarjetas según el orden de
+finalización.
+
+#### Scenario: Una tanda muestra todas sus tarjetas al empezar
+- **WHEN** el turno ejecuta una tanda de varias llamadas
+- **THEN** la interfaz muestra todas las tarjetas desde el inicio de la tanda
+
+#### Scenario: Las tarjetas se completan a medida que terminan
+- **WHEN** una llamada de la tanda termina antes que otra
+- **THEN** su tarjeta se completa primero
+
+#### Scenario: El orden de las tarjetas es el de las llamadas
+- **WHEN** las llamadas de una tanda terminan en orden distinto al pedido
+- **THEN** las tarjetas conservan el orden en que el modelo pidió las llamadas

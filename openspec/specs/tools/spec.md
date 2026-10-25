@@ -201,11 +201,11 @@ El sistema SHALL NOT delegar la decisión al sistema operativo.
 El sistema SHALL ejecutar un comando solo si ese comando pertenece al catálogo de
 la plataforma activa. El sistema SHALL usar el intérprete propio de la plataforma
 activa; en Windows SHALL usar PowerShell. El sistema SHALL exponer la herramienta
-de ejecución en Linux, macOS y Windows. El sistema SHALL rechazar antes de ejecutar
-un comando que no pertenezca al catálogo, y SHALL devolver al modelo un mensaje que
-indique que el comando no está disponible en esa plataforma. El sistema SHALL
-evaluar la solicitud como una invocación simple y SHALL rechazar una línea que
-componga varios comandos.
+de ejecución en Linux, macOS y Windows con el mismo nombre `shell`. El sistema SHALL
+rechazar antes de ejecutar un comando que no pertenezca al catálogo, y SHALL
+devolver al modelo un mensaje que indique que el comando no está disponible en esa
+plataforma. El sistema SHALL evaluar la solicitud como una invocación simple y SHALL
+rechazar una línea que componga varios comandos.
 
 #### Scenario: El comando está en el catálogo
 - **WHEN** el modelo solicita un comando presente en el catálogo de la plataforma activa
@@ -226,3 +226,50 @@ componga varios comandos.
 #### Scenario: Un comando compuesto
 - **WHEN** el modelo solicita una línea que encadena o compone varios comandos
 - **THEN** el sistema la rechaza sin ejecutar y explica que solo admite una invocación simple
+
+#### Scenario: El nombre es el mismo en todas las plataformas
+- **WHEN** el modelo consulta las herramientas disponibles en Linux, macOS o Windows
+- **THEN** la herramienta de ejecución aparece con el nombre `shell` en las tres
+
+### Requirement: La herramienta de delegación declara su esquema
+La herramienta de delegación SHALL declarar un esquema con el nombre del subagente y
+el pedido, ambos obligatorios. El sistema SHALL limitar el nombre del subagente a los
+que existen. El sistema SHALL devolver como texto un argumento que no cumpla el
+esquema.
+
+#### Scenario: La herramienta de delegación declara agente y pedido
+- **WHEN** el modelo consulta qué acepta la delegación
+- **THEN** el esquema expone el subagente y el pedido como obligatorios
+
+#### Scenario: Un argumento inválido vuelve como texto
+- **WHEN** el modelo envía un argumento que no cumple el esquema
+- **THEN** el sistema no ejecuta la delegación y devuelve el error como texto
+
+### Requirement: Cada herramienta declara su acción de permiso y su recurso
+Cada herramienta SHALL declarar la acción de permiso que le corresponde y cómo se
+obtiene el recurso sobre el que se evalúa. El sistema SHALL NOT habilitar una
+herramienta que no declare ambas cosas. Escribir y editar SHALL compartir la acción
+de editar; leer, buscar archivos y buscar texto SHALL tener cada uno la suya; la
+ejecución SHALL usar la acción de ejecutar; la delegación SHALL usar la de delegar.
+
+#### Scenario: El catálogo expone la acción y el recurso
+- **WHEN** el sistema evalúa el permiso de una herramienta
+- **THEN** obtiene la acción de la herramienta y el recurso de sus argumentos
+
+#### Scenario: Una herramienta sin acción no se habilita
+- **WHEN** se registra una herramienta que no declara su acción de permiso
+- **THEN** el sistema no la habilita para el modelo
+
+### Requirement: Cada herramienta declara si admite ejecución en paralelo
+Cada herramienta SHALL declarar si es segura para ejecutarse junto a otras. Una
+herramienta que no declare nada SHALL tratarse como no segura y ejecutarse sola.
+Leer, buscar archivos y buscar texto SHALL declararse seguras; escribir, editar,
+ejecutar y delegar SHALL declararse no seguras.
+
+#### Scenario: Una herramienta segura se agrupa con las consecutivas
+- **WHEN** el modelo pide varias llamadas consecutivas de herramientas seguras
+- **THEN** el sistema las agrupa en una misma tanda
+
+#### Scenario: Una herramienta sin declaración se ejecuta sola
+- **WHEN** una herramienta no declara si admite paralelo
+- **THEN** el sistema la trata como no segura y la ejecuta sola

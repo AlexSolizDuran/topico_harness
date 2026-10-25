@@ -52,6 +52,9 @@ npm run dev
 # Elegir un modelo configurado
 npm run dev -- --modelo openrouter/deepseek/deepseek-chat "Respondé hola"
 
+# Elegir el agente inicial (build o plan)
+npm run dev -- --agente plan "Analizá la arquitectura del proyecto"
+
 # Otro directorio de proyecto
 npm run dev -- --dir /ruta/al/proyecto "pedido"
 
@@ -61,9 +64,12 @@ npm run dev -- --help
 
 Dentro de la TUI:
 
-- `Enter` envía el pedido.
-- `/modelo` lista los modelos disponibles.
-- `/modelo proveedor/modelo` cambia el modelo sin reiniciar ni perder el historial.
+- `Enter` envía el pedido (`Shift+Enter` o `Ctrl+J` inserta salto de línea).
+- `Tab` alterna entre los agentes primarios (`build` y `plan`).
+- `/agente` abre el selector de agentes o cambia directo con `/agente <nombre>`.
+- `/modelo` lista los modelos disponibles o cambia con `/modelo proveedor/modelo`.
+- `/contexto` muestra el panel de presupuesto y métricas de tokens.
+- Cuando una herramienta requiere aprobación (`consultar`), aparece el panel interactivo (`[1/y]` aprobar una vez, `[2/a]` aprobar siempre, `[3/n/Esc]` denegar).
 - `Ctrl+C` cancela el turno en curso; si no hay turno, sale.
 - `Ctrl+D` sale.
 

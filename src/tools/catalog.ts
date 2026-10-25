@@ -16,8 +16,16 @@ export class ErrorEsquemaRequerido extends Error {
   }
 }
 
+export class ErrorPermisoHerramientaRequerido extends Error {
+  constructor(mensaje: string) {
+    super(mensaje)
+    this.name = 'ErrorPermisoHerramientaRequerido'
+  }
+}
+
 /**
- * Valida que una herramienta declare un esquema estructurado antes de darla de alta.
+ * Valida que una herramienta declare un esquema estructurado, su acción de permiso
+ * y su extractor de recurso antes de darla de alta.
  */
 export function registrarHerramientaConValidacion(
   registro: RegistroHerramientas,
@@ -30,6 +38,14 @@ export function registrarHerramientaConValidacion(
   ) {
     throw new ErrorEsquemaRequerido(
       `La herramienta '${herramienta.nombre}' no declara un esquema y no puede ser habilitada.`,
+    )
+  }
+  if (
+    !herramienta.accionPermiso ||
+    typeof herramienta.obtenerRecurso !== 'function'
+  ) {
+    throw new ErrorPermisoHerramientaRequerido(
+      `La herramienta '${herramienta.nombre}' debe declarar 'accionPermiso' y 'obtenerRecurso' para ser habilitada.`,
     )
   }
   registro.registrar(herramienta)

@@ -55,6 +55,9 @@ export function crearHerramientaGlob(
       },
       required: ['patron'],
     },
+    accionPermiso: 'glob',
+    obtenerRecurso: (args) => String(args.patron ?? '*'),
+    admiteParalelo: true,
     ejecutar: async (args) => {
       const patron = String(args.patron ?? '')
 

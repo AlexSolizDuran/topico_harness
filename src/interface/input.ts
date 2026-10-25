@@ -12,6 +12,7 @@ export type ResultadoEntrada =
       argumentos: string
       estado: EstadoEntrada
     }
+  | { tipo: 'cambiar_agente'; estado: EstadoEntrada }
   | { tipo: 'cancelar'; estado: EstadoEntrada }
   | { tipo: 'salir'; estado: EstadoEntrada }
 
@@ -151,6 +152,9 @@ export function aplicarTecla(
   }
   if (tecla.ctrl && input === 'd') {
     return { tipo: 'salir', estado }
+  }
+  if (tecla.tab && !tecla.ctrl && !tecla.meta) {
+    return { tipo: 'cambiar_agente', estado }
   }
 
   if ((tecla.return && tecla.shift) || (tecla.ctrl && input === 'j')) {
