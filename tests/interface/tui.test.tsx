@@ -47,7 +47,7 @@ describe('TUI', () => {
     expect(salida).toContain('/ comandos')
   })
 
-  it('la paleta muestra los comandos disponibles', () => {
+  it('Abrir la lista', () => {
     const salida = renderToString(
       <PaletaComandos comandos={COMANDOS} seleccionado={0} />,
     )
@@ -65,7 +65,7 @@ describe('TUI', () => {
     expect(filtrarComandos('zzz')).toHaveLength(0)
   })
 
-  it('el selector de modelo marca el activo', () => {
+  it('Elegir un modelo', () => {
     const salida = renderToString(
       <SelectorModelo
         modelos={[
@@ -97,7 +97,7 @@ describe('TUI', () => {
     expect(salida).toContain('en curso')
   })
 
-  it('el panel de contexto muestra ventana, presupuesto y uso', () => {
+  it('Uso actual visible', () => {
     const presupuesto = new PresupuestoContexto({
       ventanaContexto: 2000,
       porcentajeLimite: 0.8,
@@ -117,6 +117,19 @@ describe('TUI', () => {
     expect(salida).toContain('Disponible: 1.5k')
     expect(salida).toContain('Consumo acumulado: 120')
     expect(salida).toContain('Última compactación: ninguna')
+  })
+
+  it('Conteo estimado', () => {
+    // WHEN el provider no reportó el conteo de tokens
+    const presupuesto = new PresupuestoContexto({ ventanaContexto: 2000 })
+    const metricas = medirContexto(presupuesto, [
+      { rol: 'user', contenido: 'x'.repeat(400) },
+    ])
+
+    const salida = renderToString(<PanelContexto metricas={metricas} />)
+
+    // THEN la interfaz marca el uso como estimado
+    expect(salida).toContain(', estimado')
   })
 
   it('la caja de entrada conserva las líneas del pedido', () => {
@@ -145,7 +158,7 @@ describe('TUI', () => {
     expect(salida).not.toContain('listo')
   })
 
-  it('muestra el antes y después de la última compactación', () => {
+  it('Después de compactar', () => {
     const presupuesto = new PresupuestoContexto({ ventanaContexto: 2000 })
     const metricas = medirContexto(
       presupuesto,

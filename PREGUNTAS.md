@@ -1,31 +1,70 @@
-# Preguntas pendientes
+# Preguntas y decisiones
 
-Lo que falta decidir. Ninguna bloquea la construcción: las 5 capacidades están
-escritas en `openspec/specs/` y se pueden implementar tal cual están.
+Lo que quedó por decidir y el registro de lo ya decidido. Las 8 capacidades de
+`openspec/specs/` están implementadas; ninguna decisión abierta bloquea el
+funcionamiento actual.
 
-## Abiertas
+## Resueltas
 
-### ¿Cuál es el provider de la v1?
+Se documentan acá porque `alcance/decisiones-abiertas.md` es el registro original
+y estas decisiones ya se escribieron en los specs.
 
-**Impacto:** el adaptador inicial de `020-provider`. La interfaz no cambia, solo lo
-que se implementa detrás.
+### El provider de la v1
 
-| Opción | A favor | En contra |
-|---|---|---|
-| Solo Anthropic | El tool calling más confiable | Un solo punto de falla |
-| Solo OpenAI | Ídem | Ídem |
-| Ambos | Agnóstico de verdad | Más trabajo de tests desde el día 1 |
+**Resuelto (`020-provider`).** OpenRouter, por su API compatible con OpenAI y su
+catálogo de modelos. Ollama queda como alternativa local. El spec de `provider`
+es agnóstico a propósito: ninguno de sus requisitos nombra un proveedor.
 
-**Recomendación:** uno solo en la v1. La interfaz agnóstica se escribe igual; el
-segundo adaptador se agrega después en un change chico.
+### Plataformas: Linux, macOS y Windows
 
-**Dónde se decide:** en el `design.md` de `020-provider`, no en el spec. El spec
-de `provider` es agnóstico a propósito y ninguno de sus 6 requisitos nombra un
-proveedor.
+**Decidido.** Invertido lo que decía `alcance/`, que las excluía. La CI en los tres
+sistemas se monta con un archivo de 25 líneas, y la ejecución de comandos en
+Windows se resolvió con PowerShell y una allowlist (`120-shell-windows`).
+
+### Catálogo de comandos y lista negra
+
+**Decidido.** Un catálogo por plataforma, y encima una lista negra por nombre
+completo en Unix. Se descartó la clasificación por categoría de efecto: la
+allowlist de Windows y la lista negra de Unix alcanzan.
+
+La lista negra bloquea **nombres**, nunca cadenas. `rm -rf` es evadible con
+`rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`.
+
+### La interfaz sí es una capacidad
+
+**Decidido.** `interface` es uno de los 8 specs, con 17 requisitos. El que la hace
+viable es *"sin terminal interactiva, degrada a salida línea a línea"*.
+
+### Nombres de las capacidades en inglés
+
+**Decidido.** `core`, `provider`, `tools`, `context`, `interface`, `agents`,
+`subagents` y `permissions`. Los requisitos van escritos en español con los
+marcadores estructurales en inglés, porque el CLI los parsea.
+
+### ¿Los subagentes heredan el contexto del padre?
+
+**Resuelto (`160-subagentes`).** Contexto vacío + el objetivo explícito en el
+prompt (`task`), profundidad máxima 1, intersección de herramientas de solo
+lectura y presupuesto/límite de pasos propios. Es lo que hace que el padre no se
+infle.
+
+### ¿El harness solo edita, o también ejecuta?
+
+**Resuelto (`170-permisos`).** `write` y `edit` comparten la acción de permiso
+`edit` y pasan por el mismo gate declarativo de permisos
+(`permitir | consultar | denegar`) que `shell`, `read`, `glob`, `grep`,
+`subagent` y `external_directory`. La herramienta de ejecución se unificó bajo el
+nombre `shell` en Linux, macOS y Windows.
+
+### ¿Cuántos reintentos antes de rendirse?
+
+**Resuelto (`020-provider`).** 3 intentos como máximo, espera inicial de 500 ms y
+factor 2 entre intentos (`src/provider/retry.ts`). El spec acota el número sin
+fijar la cifra; la cifra vive en el código y en el `design.md` del change.
 
 ## Postergadas
 
-Se resuelven cuando se llegue al nivel correspondiente. Ninguna bloquea.
+Se resuelven más adelante. Ninguna bloquea.
 
 ### ¿Cómo se persisten las sesiones?
 
@@ -41,51 +80,3 @@ consistente, no durable.
 
 **Recomendación:** JSONL. Append-only significa que un corte a mitad de turno
 pierde ese turno, no la sesión.
-
-### ¿Los subagentes heredan el contexto del padre?
-
-**Resuelto (`160-subagentes`).** Contexto vacío + el objetivo explícito en el prompt (`task`), profundidad máxima 1, intersección de herramientas de solo lectura y presupuesto/límite de pasos propios. Es lo que hace que el padre no se infle.
-
-### ¿El harness solo edita, o también ejecuta?
-
-**Resuelto (`170-permisos`).** `write` y `edit` comparten la acción de permiso `edit` y pasan por el mismo gate declarativo de permisos (`permitir | consultar | denegar`) que `shell`, `read`, `glob`, `grep`, `subagent` y `external_directory`. La herramienta de ejecución se unificó bajo el nombre `shell` en Linux, macOS y Windows.
-
-### ¿Cuántos reintentos antes de rendirse?
-
-`provider` acota el número de reintentos pero no fija la cifra. Es el único
-parámetro de los cuatro sin valor por defecto. Los otros tres están en
-`openspec/config.yaml`: 25 pasos, 80% de la ventana, 30.000 caracteres.
-
-**Propuesta:** 3 intentos. Se define en el `design.md` de `020-provider`.
-
-## Resueltas
-
-Se documentan acá porque `alcance/decisiones-abiertas.md` es el registro original
-y estas decisiones ya se escribieron en los specs.
-
-### Plataformas: Linux, macOS y Windows
-
-**Decidido.** Invertido lo que decía `alcance/`, que las excluía. Motivos que ya no
-aplican: la CI en los tres sistemas se monta con un archivo de 25 líneas, y la
-ejecución de comandos en Windows se resolvió *deshabilitándola* en la v1 en vez de
-prometer una garantía que el mecanismo no sostiene.
-
-### Catálogo de comandos y lista negra
-
-**Decidido.** Un catálogo por plataforma, y encima una lista negra por nombre
-completo. Se descartó la clasificación por categoría de efecto: con la ejecución
-deshabilitada en Windows, no hace falta.
-
-La lista negra bloquea **nombres**, nunca cadenas. `rm -rf` es evadible con
-`rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`.
-
-### La interfaz sí es una capacidad
-
-**Decidido.** `interface` es uno de los 5 specs, con 7 requisitos. El que la hace
-viable es *"sin terminal interactiva, degrada a salida línea a línea"*.
-
-### Nombres de las capacidades en inglés
-
-**Decidido.** `core`, `provider`, `tools`, `context`, `interface`. Los requisitos
-van escritos en español con los marcadores estructurales en inglés, porque el CLI
-los parsea.

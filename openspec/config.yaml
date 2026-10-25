@@ -10,12 +10,13 @@ context: |
     contexto y se cancela a mitad de tarea.
     El modelo es el motor. El harness es el chasis.
 
-  ALCANCE DE LA v1: niveles 0 al 2
+  ALCANCE IMPLEMENTADO: niveles 0 al 3
     0  One-shot. Una llamada al provider. Descarta problemas falsos.
     1  El loop y las herramientas.
     2  Gestion de contexto: presupuesto, recorte, compactacion.
-    Fuera de alcance: subagentes, aprobaciones, sesiones persistentes, agentes
-    nombrados, permisos, hooks, sandbox, LSP, MCP, memoria.
+    3  Subagentes con contexto aislado.
+    Ademas: agentes primarios, permisos, aprobaciones y tandas (changes 150 a 190).
+    Fuera de alcance: sesiones persistentes, hooks, sandbox, LSP, MCP, memoria.
     La escalera completa esta documentada en `alcance/`, que es referencia de
     razonamiento y no contrato. El contrato vive en `openspec/specs/`.
 
@@ -37,7 +38,8 @@ context: |
     libreria o un algoritmo, esta mal escrito.
 
   CONVENCIONES DE LOS SPECS
-    Carpetas en ingles: core, provider, tools, context, interface.
+    Carpetas en ingles: core, provider, tools, context, interface, agents,
+    subagents, permissions.
     Texto de los requisitos en espanol. Los marcadores estructurales van en
     ingles porque el CLI los parsea: `## Purpose`, `## Requirements`,
     `### Requirement:`, `#### Scenario:`. Las palabras clave tambien:
@@ -60,11 +62,12 @@ context: |
     `rm --recursive --force` producen el mismo borrado. Verificado en GNU
     coreutils 9.7.
 
-    LA EJECUCION NO ESTA DISPONIBLE EN WINDOWS en la v1. En PowerShell, borrar es
-    nueve nombres distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y ademas
-    se puede llamar como metodo .NET. Una lista negra por nombre no aguanta eso.
-    En vez de prometer una garantia que el mecanismo no sostiene, la v1 no expone
-    la herramienta. En Windows el agente lee, busca, escribe y edita.
+    WINDOWS USA POWERSHELL CON ALLOWLIST. No hay lista negra en Windows: borrar
+    tiene nueve alias distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y
+    ademas se puede llamar como metodo .NET. Una lista negra por nombre no aguanta
+    eso, asi que la defensa es una allowlist explicita sobre PowerShell (git, npm,
+    node, cmdlets de lectura y edicion). El camino esta cubierto por tests
+    unitarios, pero no corrio en CI sobre Windows.
 
     UNIX, bloqueados: rm, rmdir, unlink, shred, mkfs, dd, chmod, chown, chgrp,
     sudo, su, doas, mount, umount, kill, killall, pkill, shutdown, reboot, halt,
@@ -87,15 +90,15 @@ context: |
     proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
     Los changes que solo materializan comportamiento ya especificado declaran
-    `skip_specs: true` en su `.openspec.yaml` (070, 080, 090 y 110). Los que
-    ajustan el contrato traen deltas de spec (060, 100, 120, 130, 140, 150, 160,
-    170, 180 y 190).
+    `skip_specs: true` en su `.openspec.yaml` (010 a 050, 070, 080, 090 y 110).
+    Los que ajustan el contrato traen deltas de spec (060, 100, 120, 130, 140,
+    150, 160, 170, 180 y 190).
 
   ESTADO
     8 capacidades, 83 requisitos, 251 escenarios. Todo validado contra el schema
     `spec-driven`.
     core (12) · provider (7) · tools (14) · context (10) · interface (17) · agents (6) · subagents (9) · permissions (8)
-    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 300 tests
+    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 303 tests
     y `npm run build` genera `dist/main.js`. La prueba de punta a punta contra
     OpenRouter paso en modo plano, con lectura real de archivos y cambio de
     modelo por `--modelo`.
@@ -106,9 +109,10 @@ context: |
     queda como alternativa local. La interfaz sigue siendo agnostica: el
     adaptador vive en `src/provider/adapters/` y el nucleo no lo importa.
 
-    Parametro sin cifra: el requisito de reintentos de `provider` acota el numero
-    de intentos sin fijar el valor. La v1 no tiene motor de busqueda de
-    subagentes, asi que tampoco hay nivel 3.
+    Reintentos: 3 intentos como maximo, espera inicial de 500 ms y factor 2
+    (`src/provider/retry.ts`); el spec acota el numero sin fijar la cifra. La v1
+    no tiene motor de busqueda de subagentes: se eligen por nombre entre los
+    declarados.
 
 # Reglas por artefacto (opcional)
 # rules:

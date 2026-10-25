@@ -4,9 +4,9 @@ Un coding agent de terminal: el modelo es el motor, el harness es el chasis. Lee
 archivos, ejecuta herramientas, administra el contexto y se puede cancelar a
 mitad de tarea.
 
-La implementación corresponde a los 7 changes de `openspec/changes/`. El contrato
-de comportamiento vive en `openspec/specs/` y las decisiones de trabajo en
-`AGENTS.md`.
+La implementación corresponde a los 19 changes archivados en
+`openspec/changes/archive/`. El contrato de comportamiento vive en
+`openspec/specs/` y las decisiones de trabajo en `AGENTS.md`.
 
 ## Requisitos
 

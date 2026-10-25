@@ -91,7 +91,7 @@ describe('Entrada de teclado', () => {
     expect(resultado).toEqual({ buffer: 'aXYb', cursor: 3 })
   })
 
-  it('insertar un salto de línea no descarta el texto', () => {
+  it('Insertar un salto de línea', () => {
     const conTexto = escribir('linea 1')
     const resultado = aplicarTecla(conTexto, '', {
       return: true,
@@ -104,7 +104,7 @@ describe('Entrada de teclado', () => {
     })
   })
 
-  it('envía un pedido de varias líneas', () => {
+  it('Enviar un pedido de varias líneas', () => {
     const conLineas = insertarTexto(escribir('primera'), '\nsegunda')
     const resultado = aplicarTecla(conLineas, '', { return: true })
 

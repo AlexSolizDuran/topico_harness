@@ -12,7 +12,7 @@ cancela a mitad de tarea.
 **El modelo es el motor. El harness es el chasis.**
 
 La implementación está completa: los 19 changes de `openspec/changes/archive/` están
-implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 300
+implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 303
 tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
 con herramientas reales.
 
@@ -23,7 +23,7 @@ con herramientas reales.
 | Capacidades | 8 |
 | Requisitos | 83 |
 | Escenarios | 251 |
-| Implementación | 19 changes, `npm run check` en verde (300 tests) |
+| Implementación | 19 changes, `npm run check` en verde (303 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
@@ -242,7 +242,7 @@ test lee los archivos de `src/core/` y falla si encuentra un import de
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy pasa con 300 tests.
+typecheck y tests. Hoy pasa con 303 tests.
 
 ## Stack
 
@@ -316,8 +316,8 @@ No contradigas los specs. En resumen:
 6. **Sin base de datos en ningún nivel.** El estado vive en memoria durante el
    turno. Cuando aparezca persistencia será JSONL en `.harness/`.
 
-Fuera de alcance de la v1: subagentes, aprobaciones, sesiones persistentes,
-agentes nombrados, permisos, hooks, sandbox, LSP, MCP y memoria.
+Fuera de alcance de la v1: sesiones persistentes, hooks, sandbox, LSP, MCP y
+memoria.
 
 ## Reglas de trabajo
 
@@ -343,8 +343,8 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
 |---|---|
 | `alcance/` | Por qué el harness se construye por niveles. 12 documentos de referencia. El razonamiento, no el contrato |
 | `openspec/config.yaml` | Contexto que OpenSpec inyecta: stack, reglas, flujo, estado |
-| `openspec/specs/` | El contrato: 5 capacidades, 49 requisitos, 141 escenarios |
-| `PREGUNTAS.md` | La decisión abierta y las que se Postergaron |
+| `openspec/specs/` | El contrato: 8 capacidades, 83 requisitos, 251 escenarios |
+| `PREGUNTAS.md` | Las decisiones ya resueltas y las que se postergaron |
 | `src/` | La implementación, una carpeta por capacidad. La arquitectura está en la sección de arriba |
 | `tests/` | Un test por escenario, agrupado por capacidad |
 
