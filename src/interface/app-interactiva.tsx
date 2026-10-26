@@ -1,6 +1,10 @@
 import { Box, Static, Text, useApp, useInput, usePaste } from 'ink'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
+import type {
+  ResultadoBusquedaSesion,
+  SesionMetadata,
+} from '../sesiones/index.js'
 import {
   Aviso,
   BarraEstado,
@@ -12,6 +16,7 @@ import {
   PanelAprobacion,
   PanelAyuda,
   PanelContexto,
+  PanelSesiones,
   PieAtajos,
   SelectorAgente,
   SelectorModelo,
@@ -54,7 +59,12 @@ export function AppInteractiva({
   const [filtroModelo, setFiltroModelo] = useState('')
   const [selectorAgenteAbierto, setSelectorAgenteAbierto] = useState(false)
   const [indiceAgente, setIndiceAgente] = useState(0)
-  const [panel, setPanel] = useState<'contexto' | 'ayuda' | null>(null)
+  const [panel, setPanel] = useState<
+    'contexto' | 'ayuda' | 'sesiones' | 'busqueda' | null
+  >(null)
+  const [sesiones, setSesiones] = useState<SesionMetadata[]>([])
+  const [busqueda, setBusqueda] = useState<ResultadoBusquedaSesion[]>([])
+  const [tituloBusqueda, setTituloBusqueda] = useState('')
   const enviandoRef = useRef(false)
   const inicialEnviado = useRef(false)
 
@@ -223,6 +233,68 @@ export function AppInteractiva({
 
     if (id === 'contexto' || id === 'context') {
       setPanel('contexto')
+      return
+    }
+
+    if (id === 'sesiones' || id === 'sessions') {
+      const consulta = argumentos.trim()
+      const enMinusculas = consulta.toLowerCase()
+      if (enMinusculas === 'buscar' || enMinusculas.startsWith('buscar ')) {
+        const texto = consulta.slice('buscar'.length).trim()
+        if (!texto) {
+          setAviso('Uso: /sesiones buscar <texto>')
+          return
+        }
+        try {
+          setBusqueda(sesion.buscarSesiones(texto))
+          setTituloBusqueda(`Búsqueda: ${texto}`)
+          setPanel('busqueda')
+        } catch (error) {
+          setAviso(error instanceof Error ? error.message : String(error))
+        }
+        return
+      }
+      if (consulta) {
+        try {
+          sesion.cambiarSesion(consulta)
+          setAviso(
+            `Sesión activa: ${sesion.obtenerSesionId() ?? '(sin guardado)'}`,
+          )
+        } catch (error) {
+          setAviso(error instanceof Error ? error.message : String(error))
+        }
+        return
+      }
+      setSesiones(sesion.listarSesiones())
+      setPanel('sesiones')
+      return
+    }
+
+    if (id === 'rama' || id === 'branch') {
+      const valor = argumentos.trim()
+      const turno = Number(valor)
+      if (!valor || !Number.isInteger(turno) || turno < 0) {
+        setAviso(
+          'Uso: /rama <n>, con n un turno entero mayor o igual que cero.',
+        )
+        return
+      }
+      try {
+        const nueva = sesion.ramificar(turno)
+        setAviso(`Rama creada: ${nueva}`)
+      } catch (error) {
+        setAviso(error instanceof Error ? error.message : String(error))
+      }
+      return
+    }
+
+    if (id === 'nueva' || id === 'new') {
+      try {
+        const nueva = sesion.nuevaSesion()
+        setAviso(`Sesión nueva: ${nueva}`)
+      } catch (error) {
+        setAviso(error instanceof Error ? error.message : String(error))
+      }
       return
     }
 
@@ -473,6 +545,17 @@ export function AppInteractiva({
         )}
 
       {panel === 'contexto' && <PanelContexto metricas={estado.contexto} />}
+      {panel === 'sesiones' && (
+        <PanelSesiones sesiones={sesiones} activa={estado.sesionId} />
+      )}
+      {panel === 'busqueda' && (
+        <PanelSesiones
+          sesiones={[]}
+          activa={estado.sesionId}
+          titulo={tituloBusqueda}
+          resultados={busqueda}
+        />
+      )}
       {panel === 'ayuda' && <PanelAyuda />}
 
       {selectorAgenteAbierto && (

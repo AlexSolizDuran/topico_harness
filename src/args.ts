@@ -3,6 +3,11 @@ export interface Argumentos {
   directorio?: string | undefined
   modelo?: string | undefined
   agente?: string | undefined
+  continuar: boolean
+  sesion?: string | undefined
+  sinSesion: boolean
+  ramaDe?: string | undefined
+  desde?: number | undefined
   pedido: string
 }
 
@@ -12,6 +17,11 @@ Opciones:
   --dir <ruta>       Directorio del proyecto (por defecto, el actual)
   --modelo <id>      Modelo a usar (proveedor/modelo)
   --agente <nombre>  Agente primario inicial (por defecto, build)
+  --continuar        Reanuda la última sesión guardada del proyecto
+  --sesion <id>      Reanuda la sesión indicada
+  --rama-de <id>     Crea una rama desde la sesión indicada (requiere --desde)
+  --desde <n>        Turno de la sesión de origen donde corta la rama
+  --sin-sesion       No guarda ni reanuda sesiones
   -h, --help         Muestra esta ayuda
 
 Sin pedido y con terminal interactiva abre la TUI. Sin pedido y sin terminal
@@ -30,7 +40,12 @@ function leerValor(
 }
 
 export function parsearArgumentos(args: string[]): Argumentos {
-  const resultado: Argumentos = { ayuda: false, pedido: '' }
+  const resultado: Argumentos = {
+    ayuda: false,
+    continuar: false,
+    sinSesion: false,
+    pedido: '',
+  }
   const resto: string[] = []
   let despuesDeSeparador = false
 
@@ -70,6 +85,37 @@ export function parsearArgumentos(args: string[]): Argumentos {
       const { valor, siguiente } = leerValor(args, i, arg)
       resultado.agente = valor
       i = siguiente
+      continue
+    }
+
+    if (arg === '--continuar') {
+      resultado.continuar = true
+      continue
+    }
+
+    if (arg === '--sesion' || arg.startsWith('--sesion=')) {
+      const { valor, siguiente } = leerValor(args, i, arg)
+      resultado.sesion = valor
+      i = siguiente
+      continue
+    }
+
+    if (arg === '--rama-de' || arg.startsWith('--rama-de=')) {
+      const { valor, siguiente } = leerValor(args, i, arg)
+      resultado.ramaDe = valor
+      i = siguiente
+      continue
+    }
+
+    if (arg === '--desde' || arg.startsWith('--desde=')) {
+      const { valor, siguiente } = leerValor(args, i, arg)
+      resultado.desde = valor === undefined ? Number.NaN : Number(valor)
+      i = siguiente
+      continue
+    }
+
+    if (arg === '--sin-sesion') {
+      resultado.sinSesion = true
       continue
     }
 

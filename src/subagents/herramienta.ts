@@ -9,6 +9,7 @@ import type {
 } from '../core/registry.js'
 import type { Proveedor } from '../provider/types.js'
 import type { PorteroPermisos } from '../types.js'
+import type { GestorTareasBackground } from './background.js'
 import {
   ejecutarTurnoSubagente,
   type ProveedorResueltoSubagente,
@@ -28,6 +29,7 @@ export interface OpcionesHerramientaDelegacion {
   crearPorteroSubagente?:
     | ((subagente: DefinicionAgente) => PorteroPermisos | undefined)
     | undefined
+  gestorTareas?: GestorTareasBackground | undefined
   enTurnoHijo?: boolean | undefined
 }
 
@@ -62,6 +64,11 @@ export function construirEsquemaDelegacion(
         type: 'string',
         description: 'Pedido autosuficiente a investigar por el subagente.',
       },
+      background: {
+        type: 'boolean',
+        description:
+          'Si es true, inicia la tarea y devuelve el control sin esperar el resultado.',
+      },
     },
     required: ['agent', 'prompt'],
   }
@@ -75,6 +82,69 @@ export function crearHerramientaDelegacion(
       opciones.obtenerAgentes(),
       opciones.obtenerAgenteActivo?.(),
     )
+
+  const validarSolicitudTarea = (
+    args: Record<string, unknown>,
+  ): { error: string } | { subagente: DefinicionAgente; pedido: string } => {
+    const nombreAgente = typeof args.agent === 'string' ? args.agent.trim() : ''
+    const pedido = typeof args.prompt === 'string' ? args.prompt.trim() : ''
+
+    if (!nombreAgente || !pedido) {
+      return {
+        error:
+          "ERROR: Los argumentos 'agent' y 'prompt' son obligatorios y deben ser texto no vacío.\nLa operación no se completó.",
+      }
+    }
+
+    const todos = opciones.obtenerAgentes()
+    const activo = opciones.obtenerAgenteActivo?.()
+    const disponibles = obtenerDisponibles()
+    const listaNombres =
+      disponibles.map((s) => s.nombre).join(', ') || 'ninguno'
+
+    if (activo && nombreAgente === activo) {
+      return {
+        error: `ERROR: El agente activo '${nombreAgente}' no se puede lanzar como subagente de sí mismo. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`,
+      }
+    }
+
+    const encontrado = todos.find((a) => a.nombre === nombreAgente)
+    if (!encontrado) {
+      return {
+        error: `ERROR: El subagente '${nombreAgente}' no existe. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`,
+      }
+    }
+
+    if (!esSubagenteLanzable(encontrado)) {
+      return {
+        error: `ERROR: El agente '${nombreAgente}' es de modo primario y no se puede lanzar como subagente. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`,
+      }
+    }
+
+    return { subagente: encontrado, pedido }
+  }
+
+  const ejecutarSubagente = async (
+    subagente: DefinicionAgente,
+    pedido: string,
+    senal?: AbortSignal,
+  ): Promise<string> => {
+    const resultado = await ejecutarTurnoSubagente({
+      subagente,
+      pedido,
+      catalogo: opciones.obtenerCatalogo(),
+      proveedorPadre: opciones.obtenerProveedorPadre(),
+      ventanaContextoPadre: opciones.obtenerVentanaPadre?.(),
+      resolverModelo: opciones.resolverModelo,
+      promptSistemaBase: opciones.obtenerPromptBase?.(),
+      limitePasos: opciones.obtenerLimitePasos?.(),
+      maximoContenido: opciones.maximoContenido,
+      credencialesSanitizar: opciones.obtenerCredenciales?.(),
+      senalCancelacionPadre: senal,
+      portero: opciones.crearPorteroSubagente?.(subagente),
+    })
+    return resultado.salida
+  }
 
   return {
     nombre: 'task',
@@ -98,49 +168,27 @@ export function crearHerramientaDelegacion(
         return 'ERROR: Un subagente no puede lanzar otro subagente (profundidad máxima 1).\nLa operación no se completó.'
       }
 
-      const nombreAgente =
-        typeof args.agent === 'string' ? args.agent.trim() : ''
-      const pedido = typeof args.prompt === 'string' ? args.prompt.trim() : ''
+      const preparado = validarSolicitudTarea(args)
+      if ('error' in preparado) return preparado.error
+      const { subagente, pedido } = preparado
 
-      if (!nombreAgente || !pedido) {
-        return "ERROR: Los argumentos 'agent' y 'prompt' son obligatorios y deben ser texto no vacío.\nLa operación no se completó."
+      if (args.background === true) {
+        if (!opciones.gestorTareas) {
+          return 'ERROR: Las tareas en background no están disponibles en esta configuración.\nLa operación no se completó.'
+        }
+        try {
+          const tarea = opciones.gestorTareas.iniciar({
+            agente: subagente.nombre,
+            pedido,
+            ejecutar: (senal) => ejecutarSubagente(subagente, pedido, senal),
+          })
+          return `Tarea en background iniciada: ${tarea.id} (agente: ${subagente.nombre}). Usá task_status para consultarla o task_cancel para cancelarla.`
+        } catch (error) {
+          return `ERROR: ${(error as Error).message}\nLa operación no se completó.`
+        }
       }
 
-      const todos = opciones.obtenerAgentes()
-      const activo = opciones.obtenerAgenteActivo?.()
-      const disponibles = obtenerDisponibles()
-      const listaNombres =
-        disponibles.map((s) => s.nombre).join(', ') || 'ninguno'
-
-      if (activo && nombreAgente === activo) {
-        return `ERROR: El agente activo '${nombreAgente}' no se puede lanzar como subagente de sí mismo. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`
-      }
-
-      const encontrado = todos.find((a) => a.nombre === nombreAgente)
-      if (!encontrado) {
-        return `ERROR: El subagente '${nombreAgente}' no existe. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`
-      }
-
-      if (!esSubagenteLanzable(encontrado)) {
-        return `ERROR: El agente '${nombreAgente}' es de modo primario y no se puede lanzar como subagente. Subagentes disponibles: ${listaNombres}.\nLa operación no se completó.`
-      }
-
-      const resultado = await ejecutarTurnoSubagente({
-        subagente: encontrado,
-        pedido,
-        catalogo: opciones.obtenerCatalogo(),
-        proveedorPadre: opciones.obtenerProveedorPadre(),
-        ventanaContextoPadre: opciones.obtenerVentanaPadre?.(),
-        resolverModelo: opciones.resolverModelo,
-        promptSistemaBase: opciones.obtenerPromptBase?.(),
-        limitePasos: opciones.obtenerLimitePasos?.(),
-        maximoContenido: opciones.maximoContenido,
-        credencialesSanitizar: opciones.obtenerCredenciales?.(),
-        senalCancelacionPadre: senalCancelacion,
-        portero: opciones.crearPorteroSubagente?.(encontrado),
-      })
-
-      return resultado.salida
+      return ejecutarSubagente(subagente, pedido, senalCancelacion)
     },
   }
 }

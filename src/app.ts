@@ -17,7 +17,17 @@ import {
 } from './provider/config.js'
 import { resolverProveedor } from './provider/factory.js'
 import type { Proveedor } from './provider/types.js'
+import {
+  AlmacenSesiones,
+  ErrorSesion,
+  type SesionCargada,
+} from './sesiones/index.js'
+import { GestorTareasBackground } from './subagents/background.js'
 import { crearHerramientaDelegacion } from './subagents/herramienta.js'
+import {
+  crearHerramientaCancelarTarea,
+  crearHerramientaEstadoTareas,
+} from './subagents/herramientas-background.js'
 import {
   crearCatalogoPorDefecto,
   registrarHerramientaConValidacion,
@@ -42,6 +52,12 @@ export interface OpcionesHarness {
   reglasPermiso?: ReglaPermiso[] | undefined
   portero?: PorteroPermisos | undefined
   manejadorAprobacion?: ManejadorAprobacionCliente | undefined
+  guardarSesiones?: boolean | undefined
+  sesionId?: string | undefined
+  continuar?: boolean | undefined
+  almacen?: AlmacenSesiones | undefined
+  ramaDe?: string | undefined
+  desde?: number | undefined
 }
 
 export interface HarnessConstruido {
@@ -111,6 +127,7 @@ export function construirHarness(
 
   let agentesLista: DefinicionAgente[] = []
   let sesionRef: SesionInteractiva | undefined
+  const gestorTareas = new GestorTareasBackground()
 
   if (!opciones.registro && !registro.tiene('task')) {
     const toolTask = crearHerramientaDelegacion({
@@ -119,6 +136,7 @@ export function construirHarness(
       obtenerCatalogo: () => registro,
       obtenerProveedorPadre: () => proveedor,
       obtenerVentanaPadre: () => ventanaContexto,
+      gestorTareas,
       resolverModelo: (modelo) => {
         if (!fabricaProveedor) {
           return { proveedor, ventanaContexto, credencialesSanitizar }
@@ -141,6 +159,14 @@ export function construirHarness(
         }),
     })
     registrarHerramientaConValidacion(registro, toolTask)
+    registrarHerramientaConValidacion(
+      registro,
+      crearHerramientaEstadoTareas(gestorTareas),
+    )
+    registrarHerramientaConValidacion(
+      registro,
+      crearHerramientaCancelarTarea(gestorTareas),
+    )
   }
 
   const opcionesValidacion = {
@@ -164,6 +190,49 @@ export function construirHarness(
     agentePorDefecto = cargados.agentePorDefecto
   }
 
+  const guardarSesiones =
+    opciones.guardarSesiones !== false &&
+    config?.sesiones?.guardar !== false &&
+    (config !== undefined ||
+      opciones.almacen !== undefined ||
+      opciones.sesionId !== undefined ||
+      opciones.ramaDe !== undefined ||
+      opciones.continuar === true)
+
+  if (opciones.ramaDe !== undefined && !guardarSesiones) {
+    throw new ErrorSesion(
+      'No se puede ramificar con el guardado de sesiones desactivado.',
+    )
+  }
+
+  let almacen = opciones.almacen
+  let sesionInicial: SesionCargada | undefined
+  if (guardarSesiones && !almacen) {
+    almacen = new AlmacenSesiones({
+      directorioProyecto,
+      maximo: config?.sesiones?.maximo,
+    })
+  }
+  if (almacen) {
+    if (opciones.ramaDe !== undefined) {
+      if (
+        opciones.desde === undefined ||
+        !Number.isInteger(opciones.desde) ||
+        opciones.desde < 0
+      ) {
+        throw new ErrorSesion(
+          'La rama requiere --desde con un turno entero mayor o igual que cero.',
+        )
+      }
+      sesionInicial = almacen.ramificar(opciones.ramaDe, opciones.desde)
+    } else if (opciones.sesionId) {
+      sesionInicial = almacen.cargar(opciones.sesionId)
+    } else if (opciones.continuar) {
+      const ultima = almacen.ultima(directorioProyecto)
+      if (ultima) sesionInicial = almacen.cargar(ultima.id)
+    }
+  }
+
   const sesion = new SesionInteractiva({
     proveedor,
     registro,
@@ -181,6 +250,9 @@ export function construirHarness(
     reglasPermiso: opciones.reglasPermiso,
     portero: opciones.portero,
     manejadorAprobacion: opciones.manejadorAprobacion,
+    gestorTareas,
+    ...(almacen ? { almacen } : {}),
+    ...(sesionInicial ? { sesionInicial } : {}),
   })
   sesionRef = sesion
 

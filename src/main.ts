@@ -3,6 +3,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { construirHarness } from './app.js'
 import { type Argumentos, AYUDA, parsearArgumentos } from './args.js'
 import {
+  formatearAvisoSesion,
   RenderizadorLineaALinea,
   RenderizadorProgreso,
 } from './interface/plain.js'
@@ -32,9 +33,32 @@ function prepararSesion(
   esInteractivo: boolean,
 ): { sesion: Sesion } | { error: string } {
   try {
+    if (args.ramaDe !== undefined) {
+      if (
+        args.desde === undefined ||
+        !Number.isInteger(args.desde) ||
+        args.desde < 0
+      ) {
+        return {
+          error:
+            'La opción --rama-de requiere --desde <n> con un turno entero mayor o igual que cero.',
+        }
+      }
+      if (args.sinSesion) {
+        return {
+          error: 'No se puede combinar --rama-de con --sin-sesion.',
+        }
+      }
+    }
+
     const { sesion } = construirHarness({
       directorioProyecto: directorio,
       esInteractivo,
+      guardarSesiones: !args.sinSesion,
+      ...(args.continuar ? { continuar: true } : {}),
+      ...(args.sesion ? { sesionId: args.sesion } : {}),
+      ...(args.ramaDe ? { ramaDe: args.ramaDe } : {}),
+      ...(args.desde !== undefined ? { desde: args.desde } : {}),
     })
     if (args.modelo) {
       sesion.cambiarModelo(args.modelo)
@@ -63,6 +87,10 @@ async function ejecutarPedido(
   interactivo: boolean,
   directorio: string,
 ): Promise<number> {
+  if (!interactivo) {
+    process.stdout.write(formatearAvisoSesion(sesion.obtenerSesionId()))
+  }
+
   if (interactivo && !pedido) {
     const { renderizarInteractivo } = await import('./interface/render.js')
     const instancia = renderizarInteractivo(sesion, { directorio })

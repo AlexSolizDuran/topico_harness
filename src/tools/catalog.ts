@@ -5,6 +5,7 @@ import {
 import { crearHerramientaEdicion } from './edit.js'
 import { crearHerramientaGlob } from './glob.js'
 import { crearHerramientaGrep } from './grep.js'
+import { crearHerramientaParche } from './patch.js'
 import { crearHerramientaLectura } from './read.js'
 import { crearHerramientaShell } from './shell.js'
 import { crearHerramientaEscritura } from './write.js'
@@ -72,6 +73,10 @@ export function crearCatalogoPorDefecto(
   )
   registrarHerramientaConValidacion(registro, crearHerramientaEscritura(dir))
   registrarHerramientaConValidacion(registro, crearHerramientaEdicion(dir))
+  registrarHerramientaConValidacion(
+    registro,
+    crearHerramientaParche(dir, opciones.maximoContenido),
+  )
   registrarHerramientaConValidacion(registro, crearHerramientaGlob(dir))
   registrarHerramientaConValidacion(
     registro,

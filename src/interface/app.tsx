@@ -2,6 +2,10 @@ import { Box, Text } from 'ink'
 import type React from 'react'
 import type { DefinicionAgente } from '../agents/definiciones.js'
 import type { MetricasContexto } from '../context/metrics.js'
+import type {
+  ResultadoBusquedaSesion,
+  SesionMetadata,
+} from '../sesiones/index.js'
 import type { SolicitudAprobacion } from '../types.js'
 import type { ComandoUi } from './commands.js'
 import type {
@@ -257,6 +261,7 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({
       ? 'trabajando'
       : 'listo'
   const agente = estado.agenteActivo || 'build'
+  const tareasBackground = estado.tareasBackground ?? 0
 
   return (
     <Box
@@ -267,6 +272,8 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({
     >
       <Text bold color="cyan">
         ◆ {estado.modeloActivo || 'sin modelo'} · [{agente}]
+        {estado.sesionId ? ` · ses ${estado.sesionId}` : ''}
+        {tareasBackground > 0 ? ` · ${tareasBackground} bg` : ''}
       </Text>
       {directorio ? (
         <Text color="gray" wrap="truncate">
@@ -327,6 +334,79 @@ export const PanelContexto: React.FC<{ metricas: MetricasContexto }> = ({
     </Box>
   )
 }
+
+function ListaSesiones({
+  sesiones,
+  activa,
+}: {
+  sesiones: readonly SesionMetadata[]
+  activa?: string | undefined
+}): React.JSX.Element {
+  if (sesiones.length === 0) {
+    return <Text dimColor>No hay sesiones guardadas en este proyecto.</Text>
+  }
+  return (
+    <>
+      {sesiones.map((sesion) => (
+        <Text key={sesion.id}>
+          {sesion.id === activa ? '●' : '○'} {sesion.id} ·{' '}
+          {sesion.actualizadaEn.slice(0, 16).replace('T', ' ')} ·{' '}
+          {sesion.modelo || 'sin modelo'} · {sesion.mensajes} mensajes
+        </Text>
+      ))}
+    </>
+  )
+}
+
+function ListaResultados({
+  resultados,
+  activa,
+}: {
+  resultados: readonly ResultadoBusquedaSesion[]
+  activa?: string | undefined
+}): React.JSX.Element {
+  if (resultados.length === 0) {
+    return <Text dimColor>Sin coincidencias.</Text>
+  }
+  return (
+    <>
+      {resultados.map((resultado) => (
+        <Text key={resultado.sesion.id}>
+          {resultado.sesion.id === activa ? '●' : '○'} {resultado.sesion.id} ·{' '}
+          {resultado.coincidencias} coincidencia(s) · {resultado.fragmento}
+        </Text>
+      ))}
+    </>
+  )
+}
+
+export const PanelSesiones: React.FC<{
+  sesiones: readonly SesionMetadata[]
+  activa?: string | undefined
+  titulo?: string | undefined
+  resultados?: readonly ResultadoBusquedaSesion[] | undefined
+}> = ({ sesiones, activa, titulo = 'Sesiones guardadas', resultados }) => (
+  <Box
+    flexDirection="column"
+    borderStyle="round"
+    borderColor="cyan"
+    paddingX={1}
+  >
+    <Text bold color="cyan">
+      {titulo}
+    </Text>
+    {resultados ? (
+      <ListaResultados resultados={resultados} activa={activa} />
+    ) : (
+      <ListaSesiones sesiones={sesiones} activa={activa} />
+    )}
+    <Text dimColor>
+      {resultados
+        ? 'Esc para cerrar'
+        : '/sesiones <id> para reanudar · Esc para cerrar'}
+    </Text>
+  </Box>
+)
 
 export const PanelAyuda: React.FC = () => (
   <Box

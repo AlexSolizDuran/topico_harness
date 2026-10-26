@@ -11,6 +11,7 @@
         "grep",
         "write",
         "edit",
+        "apply_patch",
         "shell",
         "task"
       ]

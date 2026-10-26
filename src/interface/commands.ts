@@ -25,6 +25,24 @@ export const COMANDOS: readonly ComandoUi[] = [
     alias: ['context'],
   },
   {
+    id: 'sesiones',
+    etiqueta: '/sesiones',
+    descripcion: 'Listar o reanudar una sesión guardada',
+    alias: ['sessions'],
+  },
+  {
+    id: 'nueva',
+    etiqueta: '/nueva',
+    descripcion: 'Empezar una sesión nueva sin historial',
+    alias: ['new'],
+  },
+  {
+    id: 'rama',
+    etiqueta: '/rama',
+    descripcion: 'Crear una sesión nueva desde un turno anterior',
+    alias: ['branch'],
+  },
+  {
     id: 'ayuda',
     etiqueta: '/ayuda',
     descripcion: 'Ver atajos y comandos disponibles',

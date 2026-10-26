@@ -2,7 +2,7 @@ import {
   crearMetricasVacias,
   type MetricasContexto,
 } from '../context/metrics.js'
-import type { EventoTurno, SolicitudAprobacion } from '../types.js'
+import type { EventoTurno, Mensaje, SolicitudAprobacion } from '../types.js'
 
 let contadorVisual = 0
 export function generarIdVisual(): string {
@@ -54,9 +54,11 @@ export interface EstadoSesionVisual {
   cancelado: boolean
   modeloActivo: string
   agenteActivo: string
+  sesionId?: string | undefined
   contexto: MetricasContexto
   herramientaEnCurso?: HerramientaEnCurso | undefined
   herramientasEnCurso: HerramientaEnCurso[]
+  tareasBackground?: number | undefined
 }
 
 export function crearEstadoInicial(
@@ -64,19 +66,111 @@ export function crearEstadoInicial(
   modeloActivo = '',
   contexto: MetricasContexto = crearMetricasVacias(),
   agenteActivo = 'build',
+  extras: {
+    historial?: ElementoVisual[] | undefined
+    sesionId?: string | undefined
+  } = {},
 ): EstadoSesionVisual {
   return {
     promptSistema,
-    historial: [],
+    historial: extras.historial ? [...extras.historial] : [],
     textoStreamingActual: '',
     turnoEnCurso: false,
     esperandoAprobacion: false,
     cancelado: false,
     modeloActivo,
     agenteActivo,
+    ...(extras.sesionId ? { sesionId: extras.sesionId } : {}),
     contexto,
     herramientasEnCurso: [],
   }
+}
+
+function convertirHerramienta(
+  mensaje: Mensaje,
+  llamadas: Map<
+    string,
+    { nombre: string; argumentos: Record<string, unknown> }
+  >,
+): ElementoVisual | undefined {
+  if (mensaje.rol !== 'tool' || !mensaje.idLlamada) return undefined
+  const llamada = llamadas.get(mensaje.idLlamada)
+  const resultado = mensaje.resultado ?? mensaje.contenido ?? ''
+  const esError = resultado.startsWith('ERROR:')
+  const truncado = resultado.includes('[Contenido truncado')
+  if (llamada?.nombre === 'task') {
+    return {
+      id: generarIdVisual(),
+      tipo: 'delegacion',
+      subagente: String(llamada.argumentos.agent ?? 'subagente'),
+      pedido: String(llamada.argumentos.prompt ?? ''),
+      resultado,
+      esError,
+      truncado,
+    }
+  }
+  return {
+    id: generarIdVisual(),
+    tipo: 'herramienta',
+    nombre: llamada?.nombre ?? 'tool',
+    argumentos: llamada?.argumentos,
+    resultado,
+    esError,
+    truncado,
+  }
+}
+
+function convertirAsistente(mensaje: Mensaje): ElementoVisual[] {
+  if (mensaje.rol !== 'assistant' || !mensaje.contenido) return []
+  return [
+    {
+      id: generarIdVisual(),
+      tipo: 'asistente',
+      texto: mensaje.contenido,
+    },
+  ]
+}
+
+/**
+ * Reconstruye el historial visual de una sesión guardada. La interfaz solo
+ * presenta: las llamadas se guardan en el mensaje del asistente y los
+ * resultados llegan en los mensajes de herramienta.
+ */
+export function convertirMensajesAHistorial(
+  mensajes: readonly Mensaje[],
+): ElementoVisual[] {
+  const elementos: ElementoVisual[] = []
+  const llamadas = new Map<
+    string,
+    { nombre: string; argumentos: Record<string, unknown> }
+  >()
+
+  for (const mensaje of mensajes) {
+    if (mensaje.rol === 'user' && mensaje.contenido) {
+      elementos.push({
+        id: generarIdVisual(),
+        tipo: 'usuario',
+        texto: mensaje.contenido,
+      })
+      continue
+    }
+
+    if (mensaje.rol === 'assistant') {
+      elementos.push(...convertirAsistente(mensaje))
+      for (const llamada of mensaje.llamadasHerramientas ?? []) {
+        llamadas.set(llamada.id, {
+          nombre: llamada.nombre,
+          argumentos: llamada.argumentos,
+        })
+      }
+      continue
+    }
+
+    const herramienta = convertirHerramienta(mensaje, llamadas)
+    if (herramienta) elementos.push(herramienta)
+  }
+
+  return elementos
 }
 
 function convertirTarjetaAHistorial(item: HerramientaEnCurso): ElementoVisual {

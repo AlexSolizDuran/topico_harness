@@ -100,7 +100,15 @@ peligrosos** como mínimo. Es media hora de trabajo y evita el peor escenario
 **Recomendación:** JSONL. Append-only significa que un corte a mitad de turno
 pierde ese turno, no la sesión.
 
-Nota: si la v1 no incluye Nivel 4, esta decisión también se posterga.
+**Resuelto (`210-sesiones`):** JSONL de solo agregado en `.harness/sesiones/<id>/`.
+`sesion.json` guarda metadatos y `eventos.jsonl` un registro por turno; un corte a
+mitad de turno pierde ese turno, no la sesión, y la compactación se registra como
+reemplazo del historial.
+
+**Resuelto (`230-ramas-busqueda`):** una rama copia el historial hasta el turno
+indicado en una sesión nueva con metadatos `padre`/`desdeTurno`; la original no se
+modifica. La búsqueda recorre el historial del proyecto y devuelve coincidencias y
+un fragmento por sesión.
 
 ### 4. ¿Los subagentes heredan el contexto del padre?
 

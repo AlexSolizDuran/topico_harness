@@ -62,21 +62,21 @@ nombre `shell` en Linux, macOS y Windows.
 factor 2 entre intentos (`src/provider/retry.ts`). El spec acota el número sin
 fijar la cifra; la cifra vive en el código y en el `design.md` del change.
 
+### ¿Cómo se persisten las sesiones?
+
+**Resuelto (`210-sesiones`).** JSONL de solo agregado en
+`.harness/sesiones/<id>/`: `sesion.json` con metadatos y `eventos.jsonl` con un
+registro por turno. Un corte a mitad de turno descarta ese turno, no la sesión.
+La compactación agrega un registro que reemplaza el historial al reanudar.
+
+### ¿Se pueden ramificar o buscar sesiones?
+
+**Resuelto (`230-ramas-busqueda`).** `/rama <n>` crea una sesión nueva con el
+historial hasta el turno `n` y metadatos `padre`/`desdeTurno`; la original no se
+toca. `/sesiones buscar <texto>` recorre el historial del proyecto y devuelve las
+sesiones con coincidencias y un fragmento. En la línea de comandos se usa
+`--rama-de <id> --desde <n>`.
+
 ## Postergadas
 
 Se resuelven más adelante. Ninguna bloquea.
-
-### ¿Cómo se persisten las sesiones?
-
-**Nivel 4.** Si no hay persistencia, cerrar el harness pierde la conversación
-entera. Hoy eso es aceptable: el requisito `core` de cancelación deja el estado
-consistente, no durable.
-
-| Formato | A favor | En contra |
-|---|---|---|
-| JSONL en `.harness/` | Append-only, recuperable | Hay que reconstruir en memoria |
-| JSON completo | Simple | Un corte de escritura pierde todo |
-| SQLite | Consultable, transaccional | Un día de setup |
-
-**Recomendación:** JSONL. Append-only significa que un corte a mitad de turno
-pierde ese turno, no la sesión.

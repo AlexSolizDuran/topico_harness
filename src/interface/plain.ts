@@ -1,5 +1,9 @@
 import type { ElementoVisual, EstadoSesionVisual } from './state.js'
 
+export function formatearAvisoSesion(id: string | undefined): string {
+  return id ? `[Sesión: ${id}]\n` : ''
+}
+
 export class RenderizadorLineaALinea {
   private bufferTexto = ''
   private escritor: (linea: string) => void

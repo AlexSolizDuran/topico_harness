@@ -1,6 +1,10 @@
 {
   "proveedorPorDefecto": "openrouter",
   "modeloPorDefecto": "openai/gpt-4o",
+  "sesiones": {
+    "guardar": true,
+    "maximo": 50
+  },
   "proveedores": {
     "openrouter": {
       "tipo": "openai-compatible",

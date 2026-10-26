@@ -324,3 +324,87 @@ finalización.
 #### Scenario: El orden de las tarjetas es el de las llamadas
 - **WHEN** las llamadas de una tanda terminan en orden distinto al pedido
 - **THEN** las tarjetas conservan el orden en que el modelo pidió las llamadas
+
+### Requirement: La interfaz permite listar, cargar y crear sesiones
+La interfaz SHALL ofrecer comandos para listar las sesiones guardadas, cargar una
+por identificador y crear una sesión nueva. El listado SHALL mostrar identificador,
+fecha, modelo y cantidad de mensajes. La interfaz SHALL NOT cambiar de sesión
+mientras hay un turno en curso. Un identificador inválido SHALL mostrarse como aviso
+y SHALL dejar la sesión activa sin cambios.
+
+#### Scenario: El usuario lista las sesiones
+- **WHEN** el usuario ejecuta el comando de listado
+- **THEN** la interfaz muestra las sesiones con identificador, fecha, modelo y cantidad de mensajes
+
+#### Scenario: El usuario carga una sesión
+- **WHEN** el usuario ejecuta el comando de carga con un identificador válido
+- **THEN** la interfaz muestra el historial restaurado de esa sesión
+
+#### Scenario: El usuario crea una sesión nueva
+- **WHEN** el usuario ejecuta el comando de sesión nueva
+- **THEN** la interfaz queda sin historial y lista para un pedido nuevo
+
+#### Scenario: No se cambia de sesión durante un turno
+- **WHEN** el usuario pide cambiar de sesión mientras hay un turno en curso
+- **THEN** la interfaz rechaza el cambio y el turno continúa
+
+#### Scenario: Un identificador inválido no cambia la sesión
+- **WHEN** el usuario pide cargar una sesión que no existe
+- **THEN** la interfaz muestra el error y conserva la sesión activa
+
+---
+
+### Requirement: La interfaz muestra la sesión activa
+La interfaz SHALL mostrar el identificador de la sesión activa cuando el guardado
+está habilitado. Sin terminal interactiva, el modo línea a línea SHALL informar el
+identificador al iniciar o reanudar.
+
+#### Scenario: La barra de estado muestra la sesión
+- **WHEN** hay una sesión activa guardada
+- **THEN** la barra de estado muestra su identificador
+
+#### Scenario: El modo línea a línea informa la sesión
+- **WHEN** se inicia o reanuda una sesión sin terminal interactiva
+- **THEN** la salida informa el identificador de la sesión activa
+
+### Requirement: La interfaz muestra las tareas en background activas
+La interfaz SHALL mostrar cuántas tareas en background siguen en curso. Cuando la
+última termina, el indicador SHALL desaparecer o quedar en cero. La espera al cerrar
+el turno SHALL ser visible como un aviso.
+
+#### Scenario: La barra muestra tareas en curso
+- **WHEN** hay una o más tareas en background en curso
+- **THEN** la barra de estado muestra su cantidad
+
+#### Scenario: La espera al cerrar el turno es visible
+- **WHEN** el turno del padre termina y espera tareas en background
+- **THEN** la interfaz muestra un aviso de espera
+
+### Requirement: La interfaz permite crear una rama de la sesión activa
+La interfaz SHALL aceptar `/rama <n>` para crear una sesión nueva desde el turno
+`n` de la sesión activa y SHALL cambiarla a esa rama. Si `n` no es un entero mayor
+o igual que cero, SHALL mostrar un error y conservar la sesión activa. Si la sesión
+no tiene ese turno, SHALL mostrar el error de la sesión y conservar la activa.
+
+#### Scenario: Crear una rama desde la interfaz
+- **WHEN** el usuario ejecuta `/rama <n>` con un turno válido
+- **THEN** la interfaz pasa a la sesión nueva y muestra un aviso
+
+#### Scenario: Un número de turno inválido
+- **WHEN** el usuario ejecuta `/rama` sin un número válido
+- **THEN** la interfaz muestra un error y conserva la sesión activa
+
+---
+
+### Requirement: La interfaz permite buscar en las sesiones
+La interfaz SHALL aceptar `/sesiones buscar <texto>` y SHALL mostrar las sesiones
+con coincidencias, su cantidad y un fragmento. Si no hay coincidencias SHALL
+mostrar un panel vacío. Sin texto SHALL mostrar el uso del comando.
+
+#### Scenario: Buscar desde la interfaz
+- **WHEN** el usuario ejecuta `/sesiones buscar <texto>` con coincidencias
+- **THEN** la interfaz muestra las sesiones encontradas con su fragmento
+
+#### Scenario: Búsqueda sin coincidencias
+- **WHEN** el usuario busca un texto que no aparece en ninguna sesión
+- **THEN** la interfaz muestra que no hay coincidencias

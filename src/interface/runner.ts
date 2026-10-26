@@ -28,6 +28,16 @@ import {
 import { sanitizarTexto } from '../provider/credentials.js'
 import type { Proveedor } from '../provider/types.js'
 import type {
+  AlmacenSesiones,
+  ResultadoBusquedaSesion,
+  SesionCargada,
+  SesionMetadata,
+} from '../sesiones/index.js'
+import {
+  type GestorTareasBackground,
+  MAXIMO_CONTINUACIONES_BACKGROUND,
+} from '../subagents/background.js'
+import type {
   DecisionAprobacion,
   EstadoTurno,
   Mensaje,
@@ -37,6 +47,7 @@ import type {
 } from '../types.js'
 import {
   aplicarEventoTurno,
+  convertirMensajesAHistorial,
   crearEstadoInicial,
   type EstadoSesionVisual,
   finalizarTurnoVisual,
@@ -61,6 +72,13 @@ export class ErrorCambioAgente extends Error {
   constructor(mensaje: string) {
     super(mensaje)
     this.name = 'ErrorCambioAgente'
+  }
+}
+
+export class ErrorCambioSesion extends Error {
+  constructor(mensaje: string) {
+    super(mensaje)
+    this.name = 'ErrorCambioSesion'
   }
 }
 
@@ -92,12 +110,30 @@ export interface OpcionesSesion {
   reglasPermiso?: ReglaPermiso[] | undefined
   portero?: PorteroPermisos | undefined
   manejadorAprobacion?: ManejadorAprobacionCliente | undefined
+  almacen?: AlmacenSesiones | undefined
+  sesionInicial?: SesionCargada | undefined
+  gestorTareas?: GestorTareasBackground | undefined
 }
 
 /**
  * Orquesta la sesión entre el usuario y el núcleo: turno, cancelación,
  * presupuesto de contexto, cambio de modelo, agente activo y aprobaciones.
  */
+function resolverAgenteInicial(
+  agentes: DefinicionAgente[],
+  primarios: DefinicionAgente[],
+  solicitado: string | undefined,
+): string {
+  const inicial = solicitado ?? primarios[0]?.nombre ?? 'build'
+  const definicion = agentes.find((a) => a.nombre === inicial)
+  if (definicion && !esAgentePrimario(definicion)) {
+    throw new ErrorCambioAgente(
+      `El agente '${inicial}' no es un agente primario.`,
+    )
+  }
+  return definicion?.nombre ?? primarios[0]?.nombre ?? 'build'
+}
+
 export class SesionInteractiva {
   private estado: EstadoSesionVisual
   private mensajesHistorial: Mensaje[] = []
@@ -122,9 +158,13 @@ export class SesionInteractiva {
   private agenteActivo: string
   private gestorPermisos: GestorPermisos
   private porteroExterno?: PorteroPermisos | undefined
+  private almacen?: AlmacenSesiones | undefined
+  private sesion?: SesionMetadata | undefined
+  private gestorTareas?: GestorTareasBackground | undefined
   private resolverAprobacionActiva?:
     | ((decision: DecisionAprobacion) => void)
     | undefined
+  private cancelacionSolicitada = false
 
   constructor(opciones: OpcionesSesion) {
     this.proveedor = opciones.proveedor
@@ -149,34 +189,105 @@ export class SesionInteractiva {
         : crearAgentesPorDefecto(this.registro.listarNombres())
 
     const primarios = listarAgentesPrimarios(this.agentes)
-    const inicial = opciones.agenteActivo ?? primarios[0]?.nombre ?? 'build'
-    const defInicial = this.agentes.find((a) => a.nombre === inicial)
-    if (defInicial && !esAgentePrimario(defInicial)) {
-      throw new ErrorCambioAgente(
-        `El agente '${inicial}' no es un agente primario.`,
-      )
+    this.agenteActivo = resolverAgenteInicial(
+      this.agentes,
+      primarios,
+      opciones.agenteActivo,
+    )
+
+    this.almacen = opciones.almacen
+    this.sesion = opciones.sesionInicial?.metadata
+    if (opciones.sesionInicial) {
+      this.restaurarDesdeSesion(opciones.sesionInicial)
     }
-    this.agenteActivo = defInicial?.nombre ?? primarios[0]?.nombre ?? 'build'
+    const errorSesion = this.asegurarSesion()
+
+    const definicionActiva = this.agentes.find(
+      (a) => a.nombre === this.agenteActivo,
+    )
 
     this.porteroExterno = opciones.portero
     this.gestorPermisos = new GestorPermisos({
       directorioProyecto: opciones.directorioProyecto,
       reglasGlobales: opciones.reglasPermiso,
-      reglasAgente: defInicial?.permisos,
+      reglasAgente: definicionActiva?.permisos,
       esInteractivo: opciones.esInteractivo ?? true,
       manejadorAprobacion:
         opciones.manejadorAprobacion ??
         ((solicitud, senal) => this.esperarDecisionUsuario(solicitud, senal)),
     })
 
-    this.metricas = this.calcularMetricas()
+    this.metricas = this.calcularMetricas(false)
     this.estado = crearEstadoInicial(
-      this.componerPromptEfectivo(defInicial),
+      this.componerPromptEfectivo(definicionActiva),
       this.modeloActivo,
       this.metricas,
       this.agenteActivo,
+      {
+        historial: opciones.sesionInicial
+          ? convertirMensajesAHistorial(this.mensajesHistorial)
+          : undefined,
+        sesionId: this.sesion?.id,
+      },
     )
+    this.avisarSesionInicial(opciones.sesionInicial, errorSesion)
     this.alActualizar = opciones.alActualizar
+    this.gestorTareas = opciones.gestorTareas
+    this.gestorTareas?.establecerObservador((tareas) => {
+      const enCurso = tareas.filter(
+        (tarea) => tarea.estado === 'en_curso',
+      ).length
+      if (enCurso === (this.estado.tareasBackground ?? 0)) return
+      this.estado = { ...this.estado, tareasBackground: enCurso }
+      this.notificar()
+    })
+  }
+
+  private restaurarDesdeSesion(cargada: SesionCargada): void {
+    this.mensajesHistorial = [...cargada.mensajes]
+    if (cargada.metadata.modelo) {
+      try {
+        this.aplicarModelo(cargada.metadata.modelo)
+      } catch {
+        // El historial se conserva; el modelo guardado ya no está disponible.
+      }
+    }
+    const guardado = this.agentes.find(
+      (a) => a.nombre === cargada.metadata.agente,
+    )
+    if (guardado && esAgentePrimario(guardado)) {
+      this.agenteActivo = guardado.nombre
+    }
+  }
+
+  private asegurarSesion(): string | undefined {
+    if (!this.almacen || this.sesion) return undefined
+    try {
+      this.sesion = this.almacen.crear({
+        modelo: this.modeloActivo,
+        agente: this.agenteActivo,
+      })
+      return undefined
+    } catch (error) {
+      this.almacen = undefined
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private avisarSesionInicial(
+    cargada: SesionCargada | undefined,
+    errorSesion: string | undefined,
+  ): void {
+    if (cargada) {
+      this.agregarAviso(
+        `Sesión reanudada: ${cargada.metadata.id} (${this.mensajesHistorial.length} mensajes).`,
+      )
+    }
+    if (errorSesion) {
+      this.agregarAviso(
+        `No se pudo iniciar el guardado de la sesión: ${errorSesion}`,
+      )
+    }
   }
 
   private componerPromptEfectivo(agente?: DefinicionAgente): string {
@@ -295,6 +406,77 @@ export class SesionInteractiva {
     return sanitizarTexto(texto, this.credencialesSanitizar)
   }
 
+  private aplicarModelo(id: string): void {
+    if (!this.fabricaProveedor || !id) return
+    const barra = id.indexOf('/')
+    const proveedorId = barra > 0 ? id.slice(0, barra) : this.proveedor.nombre
+    const modeloId = barra > 0 ? id.slice(barra + 1) : id
+    if (!proveedorId || !modeloId) return
+
+    const resuelto = this.fabricaProveedor(proveedorId, modeloId)
+    this.proveedor = resuelto.proveedor
+    this.ventanaContexto = resuelto.ventanaContexto ?? this.ventanaContexto
+    this.presupuesto = new PresupuestoContexto({
+      ventanaContexto: this.ventanaContexto,
+    })
+    if (resuelto.credencialesSanitizar) {
+      this.credencialesSanitizar = resuelto.credencialesSanitizar
+    }
+    this.modeloActivo = id
+    this.ultimoTokens = undefined
+  }
+
+  private actualizarMetadataSesion(cambios: {
+    modelo?: string
+    agente?: string
+  }): void {
+    if (!this.almacen || !this.sesion) return
+    try {
+      this.sesion = this.almacen.actualizarMetadata(this.sesion.id, cambios)
+    } catch (error) {
+      this.agregarAviso(
+        this.limpiar(
+          `No se pudieron actualizar los metadatos de la sesión: ${(error as Error).message}`,
+        ),
+      )
+    }
+  }
+
+  private persistirTurno(estado: EstadoTurno, mensajes: Mensaje[]): void {
+    if (!this.almacen || !this.sesion || mensajes.length === 0) return
+    try {
+      this.almacen.guardarTurno(
+        this.sesion.id,
+        estado.tipo,
+        mensajes,
+        this.credencialesSanitizar,
+      )
+    } catch (error) {
+      this.agregarAviso(
+        this.limpiar(
+          `No se pudo guardar el turno en la sesión: ${(error as Error).message}`,
+        ),
+      )
+    }
+  }
+
+  private persistirCompactacion(): void {
+    if (!this.almacen || !this.sesion) return
+    try {
+      this.almacen.guardarCompactacion(
+        this.sesion.id,
+        this.mensajesHistorial,
+        this.credencialesSanitizar,
+      )
+    } catch (error) {
+      this.agregarAviso(
+        this.limpiar(
+          `No se pudo guardar la compactación en la sesión: ${(error as Error).message}`,
+        ),
+      )
+    }
+  }
+
   private medirParaEnviar(texto: string): number {
     if (this.ultimoTokens) {
       return (
@@ -332,6 +514,7 @@ export class SesionInteractiva {
         despuesMensajes: resultado.mensajes.length,
       }
       this.agregarAviso('Historial compactado automáticamente.')
+      this.persistirCompactacion()
     }
     if (resultado.excedePresupuesto) {
       const tokens = calcularTokensHistorial(resultado.mensajes).tokens
@@ -412,10 +595,71 @@ export class SesionInteractiva {
     })
     this.estado.turnoEnCurso = true
     this.estado.cancelado = false
+    this.cancelacionSolicitada = false
     this.actualizarMetricas(false)
     this.notificar()
 
+    const indiceInicial = this.mensajesHistorial.length
     this.mensajesHistorial.push({ rol: 'user', contenido: texto })
+
+    let indicePersistido = await this.ejecutarIteracion(indiceInicial)
+    let continuaciones = 0
+
+    while (
+      !this.cancelacionSolicitada &&
+      this.ultimoEstadoTurno?.tipo === 'completado' &&
+      this.gestorTareas &&
+      (this.gestorTareas.hayPendientes() ||
+        this.gestorTareas.hayResultadosPendientes())
+    ) {
+      if (continuaciones >= MAXIMO_CONTINUACIONES_BACKGROUND) {
+        this.agregarAviso(
+          `Se alcanzó el límite de ${MAXIMO_CONTINUACIONES_BACKGROUND} continuaciones con tareas en background.`,
+        )
+        this.notificar()
+        break
+      }
+
+      this.estado = { ...this.estado, turnoEnCurso: true }
+
+      if (this.gestorTareas.hayPendientes()) {
+        const pendientes = this.gestorTareas.tareasEnCurso().length
+        this.agregarAviso(
+          this.limpiar(
+            `Esperando ${pendientes} tarea(s) en background antes de continuar…`,
+          ),
+        )
+        this.notificar()
+
+        await this.gestorTareas.esperarTodas()
+        if (this.cancelacionSolicitada) break
+      }
+
+      const resultados = this.gestorTareas.consumirResultados()
+      if (!resultados) break
+
+      this.mensajesHistorial.push({ rol: 'user', contenido: resultados })
+      this.estado = {
+        ...this.estado,
+        historial: [
+          ...this.estado.historial,
+          { id: generarIdVisual(), tipo: 'usuario', texto: resultados },
+        ],
+      }
+      continuaciones++
+      indicePersistido = await this.ejecutarIteracion(indicePersistido)
+    }
+
+    this.estado = { ...this.estado, turnoEnCurso: false }
+    this.notificar()
+  }
+
+  /**
+   * Ejecuta un turno completo del núcleo y persiste la diferencia de mensajes
+   * desde `indicePersistido`. Devuelve el nuevo punto de corte, ya sea el
+   * historial completo o el compactado.
+   */
+  private async ejecutarIteracion(indicePersistido: number): Promise<number> {
     this.controllerActivo = new AbortController()
     const defAgente = this.obtenerDefinicionAgenteActivo()
     this.gestorPermisos.establecerReglasAgente(defAgente?.permisos ?? [])
@@ -455,13 +699,19 @@ export class SesionInteractiva {
         this.agregarAviso(this.limpiar(estadoFinal.motivo))
       }
 
+      this.persistirTurno(
+        estadoFinal,
+        this.mensajesHistorial.slice(indicePersistido),
+      )
       this.procesarContexto()
       this.actualizarMetricas()
+      return this.mensajesHistorial.length
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : String(error)
       this.estado = finalizarTurnoVisual(this.estado, false)
       this.agregarAviso(this.limpiar(mensaje))
       this.actualizarMetricas()
+      return this.mensajesHistorial.length
     } finally {
       this.controllerActivo = undefined
       this.notificar()
@@ -492,6 +742,7 @@ export class SesionInteractiva {
       agenteActivo: agente.nombre,
       promptSistema: this.componerPromptEfectivo(agente),
     }
+    this.actualizarMetadataSesion({ agente: agente.nombre })
     this.notificar()
   }
 
@@ -543,13 +794,141 @@ export class SesionInteractiva {
       modeloActivo: id,
       contexto: this.metricas,
     }
+    this.actualizarMetadataSesion({ modelo: id })
+    this.notificar()
+  }
+
+  obtenerSesionId(): string | undefined {
+    return this.sesion?.id
+  }
+
+  listarSesiones(): SesionMetadata[] {
+    return this.almacen?.listar() ?? []
+  }
+
+  nuevaSesion(): string {
+    if (this.estado.turnoEnCurso) {
+      throw new ErrorCambioSesion(
+        'No se puede crear una sesión mientras hay un turno en curso.',
+      )
+    }
+    if (!this.almacen) {
+      throw new ErrorCambioSesion(
+        'El guardado de sesiones está desactivado en esta ejecución.',
+      )
+    }
+
+    this.gestorTareas?.cancelarTodas()
+    const metadata = this.almacen.crear({
+      modelo: this.modeloActivo,
+      agente: this.agenteActivo,
+    })
+    this.sesion = metadata
+    this.mensajesHistorial = []
+    this.ultimoTokens = undefined
+    this.tokensAcumulados = 0
+    this.ultimaCompactacion = undefined
+    this.metricas = this.calcularMetricas(false)
+    this.estado = crearEstadoInicial(
+      this.componerPromptEfectivo(this.obtenerDefinicionAgenteActivo()),
+      this.modeloActivo,
+      this.metricas,
+      this.agenteActivo,
+      { sesionId: metadata.id },
+    )
+    this.agregarAviso(`Sesión nueva: ${metadata.id}`)
+    this.notificar()
+    return metadata.id
+  }
+
+  cambiarSesion(id: string): void {
+    if (this.estado.turnoEnCurso) {
+      throw new ErrorCambioSesion(
+        'No se puede cambiar de sesión mientras hay un turno en curso.',
+      )
+    }
+    if (!this.almacen) {
+      throw new ErrorCambioSesion(
+        'El guardado de sesiones está desactivado en esta ejecución.',
+      )
+    }
+
+    const cargada = this.almacen.cargar(id)
+    this.adoptarSesion(
+      cargada,
+      `Sesión reanudada: ${id} (${cargada.mensajes.length} mensajes).`,
+    )
+  }
+
+  /** Crea una rama desde el turno indicado de la sesión activa y la adopta. */
+  ramificar(desdeTurno: number): string {
+    if (this.estado.turnoEnCurso) {
+      throw new ErrorCambioSesion(
+        'No se puede ramificar mientras hay un turno en curso.',
+      )
+    }
+    if (!this.almacen || !this.sesion) {
+      throw new ErrorCambioSesion(
+        'El guardado de sesiones está desactivado en esta ejecución.',
+      )
+    }
+
+    const rama = this.almacen.ramificar(this.sesion.id, desdeTurno)
+    this.adoptarSesion(
+      rama,
+      `Rama creada: ${rama.metadata.id} desde el turno ${desdeTurno} (${rama.mensajes.length} mensajes).`,
+    )
+    return rama.metadata.id
+  }
+
+  buscarSesiones(texto: string): ResultadoBusquedaSesion[] {
+    return this.almacen?.buscar(texto) ?? []
+  }
+
+  private adoptarSesion(cargada: SesionCargada, aviso: string): void {
+    this.gestorTareas?.cancelarTodas()
+    this.sesion = cargada.metadata
+    this.mensajesHistorial = [...cargada.mensajes]
+    if (cargada.metadata.modelo) {
+      try {
+        this.aplicarModelo(cargada.metadata.modelo)
+      } catch {
+        // El historial se conserva; el modelo guardado ya no está disponible.
+      }
+    }
+
+    const guardado = this.agentes.find(
+      (a) => a.nombre === cargada.metadata.agente,
+    )
+    if (guardado && esAgentePrimario(guardado)) {
+      this.agenteActivo = guardado.nombre
+      this.gestorPermisos.establecerReglasAgente(guardado.permisos ?? [])
+    }
+
+    this.ultimoTokens = undefined
+    this.tokensAcumulados = 0
+    this.ultimaCompactacion = undefined
+    this.metricas = this.calcularMetricas(false)
+    this.estado = crearEstadoInicial(
+      this.componerPromptEfectivo(this.obtenerDefinicionAgenteActivo()),
+      this.modeloActivo,
+      this.metricas,
+      this.agenteActivo,
+      {
+        historial: convertirMensajesAHistorial(this.mensajesHistorial),
+        sesionId: cargada.metadata.id,
+      },
+    )
+    this.agregarAviso(aviso)
     this.notificar()
   }
 
   cancelar(): void {
+    this.cancelacionSolicitada = true
     if (this.controllerActivo) {
       this.controllerActivo.abort()
     }
+    this.gestorTareas?.cancelarTodas()
   }
 }
 

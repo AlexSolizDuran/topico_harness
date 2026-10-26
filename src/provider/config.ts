@@ -25,9 +25,15 @@ export interface ConfiguracionProveedor {
   modelos: ModeloConfigurado[]
 }
 
+export interface ConfiguracionSesiones {
+  guardar?: boolean | undefined
+  maximo?: number | undefined
+}
+
 export interface ConfiguracionHarness {
   proveedorPorDefecto?: string | undefined
   modeloPorDefecto?: string | undefined
+  sesiones?: ConfiguracionSesiones | undefined
   proveedores: Record<string, ConfiguracionProveedor>
 }
 
@@ -242,6 +248,34 @@ function validarConfig(datos: unknown, ruta: string): ConfiguracionHarness {
     ...(typeof datos.modeloPorDefecto === 'string'
       ? { modeloPorDefecto: datos.modeloPorDefecto }
       : {}),
+    ...(datos.sesiones !== undefined
+      ? { sesiones: validarSesiones(datos.sesiones, ruta) }
+      : {}),
+  }
+}
+
+function validarSesiones(valor: unknown, ruta: string): ConfiguracionSesiones {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'sesiones' debe ser un objeto en ${ruta}`)
+  }
+  if (valor.guardar !== undefined && typeof valor.guardar !== 'boolean') {
+    throw new ErrorConfiguracion(
+      `'sesiones.guardar' debe ser booleano en ${ruta}`,
+    )
+  }
+  if (
+    valor.maximo !== undefined &&
+    (typeof valor.maximo !== 'number' ||
+      !Number.isInteger(valor.maximo) ||
+      valor.maximo <= 0)
+  ) {
+    throw new ErrorConfiguracion(
+      `'sesiones.maximo' debe ser un entero positivo en ${ruta}`,
+    )
+  }
+  return {
+    ...(valor.guardar !== undefined ? { guardar: valor.guardar } : {}),
+    ...(valor.maximo !== undefined ? { maximo: valor.maximo } : {}),
   }
 }
 
@@ -283,6 +317,9 @@ export function cargarConfig(
           modeloPorDefecto:
             proyecto?.modeloPorDefecto ?? global?.modeloPorDefecto,
         }
+      : {}),
+    ...(proyecto?.sesiones || global?.sesiones
+      ? { sesiones: { ...global?.sesiones, ...proyecto?.sesiones } }
       : {}),
   }
 }
