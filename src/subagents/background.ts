@@ -176,7 +176,7 @@ export class GestorTareasBackground {
 
   cancelar(id: string): boolean {
     const tarea = this.tareas.get(id)
-    if (!tarea || tarea.publica.estado !== 'en_curso') return false
+    if (tarea?.publica.estado !== 'en_curso') return false
     tarea.controlador.abort()
     return true
   }

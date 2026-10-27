@@ -1,6 +1,6 @@
 # Preguntas y decisiones
 
-Lo que quedó por decidir y el registro de lo ya decidido. Las 8 capacidades de
+Lo que quedó por decidir y el registro de lo ya decidido. Las 9 capacidades de
 `openspec/specs/` están implementadas; ninguna decisión abierta bloquea el
 funcionamiento actual.
 
@@ -32,7 +32,7 @@ La lista negra bloquea **nombres**, nunca cadenas. `rm -rf` es evadible con
 
 ### La interfaz sí es una capacidad
 
-**Decidido.** `interface` es uno de los 8 specs, con 17 requisitos. El que la hace
+**Decidido.** `interface` es uno de los 9 specs, con 22 requisitos. El que la hace
 viable es *"sin terminal interactiva, degrada a salida línea a línea"*.
 
 ### Nombres de las capacidades en inglés

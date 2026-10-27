@@ -4,9 +4,9 @@ Documento de referencia. Define **qué es un harness**, cómo se construyen por
 niveles, y qué entra en cada uno. Es la referencia de alcance; la especificación
 formal vive en `openspec/specs/`.
 
-El contrato está implementado: las 8 capacidades de `openspec/specs/` — `core`,
-`provider`, `tools`, `context`, `interface`, `agents`, `subagents` y `permissions`
-— están materializadas en `src/` y cubiertas por tests.
+El contrato está implementado: las 9 capacidades de `openspec/specs/` — `core`,
+`provider`, `tools`, `context`, `interface`, `sesiones`, `agents`, `subagents` y
+`permissions` — están materializadas en `src/` y cubiertas por tests.
 
 **Si los dos se contradicen, el spec manda.** Este documento explica el porqué de
 cada decisión; el spec dice qué tiene que hacer el sistema.
