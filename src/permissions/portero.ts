@@ -133,7 +133,7 @@ export function proponerPatronPorDefecto(
   recurso: string,
 ): string {
   const canon = normalizarAccionPermiso(accion)
-  if (canon === 'shell') {
+  if (canon === 'shell' || canon === 'shell_compuesto') {
     const partes = recurso.trim().split(/\s+/).filter(Boolean)
     if (partes.length === 0) return '*'
     const prefijo = partes.slice(0, Math.min(2, partes.length)).join(' ')
@@ -227,6 +227,9 @@ export class GestorPermisos implements PorteroPermisos {
     herramienta: {
       nombre: string
       accionPermiso?: AccionPermiso | undefined
+      resolverAccion?:
+        | ((args: Record<string, unknown>) => AccionPermiso)
+        | undefined
       obtenerRecurso?:
         | ((args: Record<string, unknown>) => string | string[])
         | undefined
@@ -236,7 +239,10 @@ export class GestorPermisos implements PorteroPermisos {
     },
     argumentos: Record<string, unknown>,
   ): EvaluacionPermiso {
-    const accionRaw = herramienta.accionPermiso ?? 'read'
+    const accionRaw =
+      herramienta.resolverAccion?.(argumentos) ??
+      herramienta.accionPermiso ??
+      'read'
     const recursos = herramienta.obtenerRecurso
       ? herramienta.obtenerRecurso(argumentos)
       : '*'

@@ -10,7 +10,6 @@ import {
   BarraEstado,
   CajaEntrada,
   ComponenteElemento,
-  ComponentePromptSistema,
   MensajeAsistente,
   PaletaComandos,
   PanelAprobacion,
@@ -514,7 +513,6 @@ export function AppInteractiva({
   return (
     <Box flexDirection="column">
       <BarraEstado estado={estado} directorio={directorio} />
-      <ComponentePromptSistema prompt={estado.promptSistema} />
 
       <Static items={estado.historial}>
         {(elemento) => (

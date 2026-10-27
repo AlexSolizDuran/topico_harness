@@ -25,3 +25,8 @@ coverage/
 .harness/*
 !.harness/config.example.json
 !.harness/agents.json
+
+# Sesiones guardadas del proyecto: un JSONL por turno, con todo el historial.
+# `.harness/*` ya las cubre; la regla explicita evita que un cambio futuro en el
+# bloque de arriba las exponga por accidente.
+.harness/sesiones/

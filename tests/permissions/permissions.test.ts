@@ -190,6 +190,24 @@ describe('permissions Specification Tests', () => {
       expect(ev.recurso).toBe('explore')
       expect(ev.efecto).toBe('denegar')
     })
+
+    it('Ejecutar y ejecutar compuesto son acciones distintas', () => {
+      const catalogo = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+      const shellTool = catalogo.obtener('shell')
+      if (!shellTool) throw new Error('herramienta no encontrada')
+
+      const gestor = new GestorPermisos({
+        incluirBase: false,
+        reglasGlobales: [{ accion: 'shell', recurso: '*', efecto: 'permitir' }],
+      })
+
+      expect(gestor.evaluar(shellTool, { comando: 'git status' }).efecto).toBe(
+        'permitir',
+      )
+      expect(
+        gestor.evaluar(shellTool, { comando: 'git status && npm test' }).efecto,
+      ).toBe('consultar')
+    })
   })
 
   // --------------------------------------------------------------------------
@@ -250,6 +268,32 @@ describe('permissions Specification Tests', () => {
           ],
         }).efecto,
       ).toBe('consultar')
+    })
+
+    it('Un comando compuesto consulta aunque la base permita ejecutar', () => {
+      const catalogo = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+      const shellTool = catalogo.obtener('shell')
+      if (!shellTool) throw new Error('herramienta no encontrada')
+
+      const gestor = new GestorPermisos({})
+      const ev = gestor.evaluar(shellTool, {
+        comando: 'git status && npm test',
+      })
+
+      expect(ev.accion).toBe('shell_compuesto')
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.recurso).toBe('git status && npm test')
+    })
+
+    it('Un comando simple no consulta', () => {
+      const catalogo = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+      const shellTool = catalogo.obtener('shell')
+      if (!shellTool) throw new Error('herramienta no encontrada')
+
+      const gestor = new GestorPermisos({})
+      expect(gestor.evaluar(shellTool, { comando: 'git status' }).efecto).toBe(
+        'permitir',
+      )
     })
   })
 

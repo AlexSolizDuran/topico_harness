@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -408,6 +408,29 @@ describe('tools Specification Tests', () => {
     })
 
     it('Un comando compuesto en Unix', async () => {
+      // WHEN el modelo encadena dos comandos permitidos del catálogo
+      let recibido = ''
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        ejecutor: async (comando) => {
+          recibido = comando
+          return { salida: 'ok', codigoSalida: 0 }
+        },
+      })
+
+      const res = await toolShell?.ejecutar({
+        comando: 'git status && npm test',
+      })
+
+      // THEN valida la línea completa y la ejecuta como compuesto
+      expect(res).toBe('ok')
+      expect(recibido).toBe('git status && npm test')
+      expect(
+        toolShell?.resolverAccion?.({ comando: 'git status && npm test' }),
+      ).toBe('shell_compuesto')
+    })
+
+    it('Un segmento prohibido bloquea la línea completa', async () => {
       // WHEN el modelo intenta encadenar un comando permitido con uno bloqueado
       let ejecutado = false
       const toolShell = crearHerramientaShell({
@@ -422,9 +445,129 @@ describe('tools Specification Tests', () => {
         comando: 'cat archivo.txt && rm -rf /',
       })
 
-      // THEN el sistema rechaza la línea completa antes de ejecutar nada
-      expect(res).toContain('invocación simple')
+      // THEN rechaza la línea completa sin ejecutar ningún segmento
+      expect(res).toContain("'rm'")
+      expect(res).toContain('lista negra')
       expect(ejecutado).toBe(false)
+    })
+
+    it('Un intérprete con -c cuenta como compuesto', () => {
+      // WHEN el modelo ejecuta código a través de un intérprete
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN no se evalúa como una invocación simple
+      expect(
+        toolShell?.resolverAccion?.({ comando: 'bash -c "rm -rf /"' }),
+      ).toBe('shell_compuesto')
+      expect(
+        toolShell?.resolverAccion?.({ comando: 'node -e "console.log(1)"' }),
+      ).toBe('shell_compuesto')
+      expect(
+        toolShell?.resolverAccion?.({ comando: 'python3 -c "print(1)"' }),
+      ).toBe('shell_compuesto')
+      expect(toolShell?.resolverAccion?.({ comando: 'git status' })).toBe(
+        'shell',
+      )
+    })
+
+    it('La sustitución de comandos se rechaza', async () => {
+      // WHEN la línea incluye $() o backticks fuera de comillas
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      const res = await toolShell?.ejecutar({ comando: 'echo $(rm -rf /)' })
+
+      // THEN se rechaza sin ejecutar
+      expect(res).toContain('sustitución')
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: La herramienta de ejecución acepta un directorio de trabajo
+  // --------------------------------------------------------------------------
+  describe('Requirement: La herramienta de ejecución acepta un directorio de trabajo', () => {
+    it('Un directorio dentro del proyecto', async () => {
+      // WHEN el modelo indica un subdirectorio existente del proyecto
+      const raiz = mkdtempSync(join(tmpdir(), 'harness-shell-'))
+      mkdirSync(join(raiz, 'paquete'))
+      let recibido = ''
+
+      try {
+        const toolShell = crearHerramientaShell({
+          plataforma: 'linux',
+          directorioProyecto: raiz,
+          ejecutor: async (_comando, cwd) => {
+            recibido = cwd
+            return { salida: 'ok', codigoSalida: 0 }
+          },
+        })
+
+        const res = await toolShell?.ejecutar({
+          comando: 'pwd',
+          directorio: 'paquete',
+        })
+
+        // THEN el comando se ejecuta con ese directorio como cwd
+        expect(res).toBe('ok')
+        expect(recibido.endsWith('paquete')).toBe(true)
+      } finally {
+        rmSync(raiz, { recursive: true, force: true })
+      }
+    })
+
+    it('Un directorio fuera del proyecto', async () => {
+      // WHEN el modelo indica un directorio que queda fuera del proyecto
+      const raiz = mkdtempSync(join(tmpdir(), 'harness-shell-'))
+      let ejecutado = false
+
+      try {
+        const toolShell = crearHerramientaShell({
+          plataforma: 'linux',
+          directorioProyecto: raiz,
+          ejecutor: async () => {
+            ejecutado = true
+            return { salida: '', codigoSalida: 0 }
+          },
+        })
+
+        const res = await toolShell?.ejecutar({
+          comando: 'pwd',
+          directorio: '..',
+        })
+
+        // THEN rechaza la solicitud sin ejecutar el comando
+        expect(res).toContain('fuera del proyecto')
+        expect(ejecutado).toBe(false)
+      } finally {
+        rmSync(raiz, { recursive: true, force: true })
+      }
+    })
+
+    it('Un directorio inexistente', async () => {
+      // WHEN el modelo indica un directorio que no existe en el proyecto
+      const raiz = mkdtempSync(join(tmpdir(), 'harness-shell-'))
+      let ejecutado = false
+
+      try {
+        const toolShell = crearHerramientaShell({
+          plataforma: 'linux',
+          directorioProyecto: raiz,
+          ejecutor: async () => {
+            ejecutado = true
+            return { salida: '', codigoSalida: 0 }
+          },
+        })
+
+        const res = await toolShell?.ejecutar({
+          comando: 'pwd',
+          directorio: 'no-existe',
+        })
+
+        // THEN rechaza la solicitud sin ejecutar el comando
+        expect(res).toContain('no existe')
+        expect(ejecutado).toBe(false)
+      } finally {
+        rmSync(raiz, { recursive: true, force: true })
+      }
     })
   })
 

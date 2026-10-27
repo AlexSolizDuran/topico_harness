@@ -11,6 +11,7 @@ export type AccionPermisoCanon =
   | 'grep'
   | 'edit'
   | 'shell'
+  | 'shell_compuesto'
   | 'subagent'
   | 'external_directory'
 
@@ -23,6 +24,8 @@ export type AccionPermiso =
   | 'buscar texto'
   | 'editar'
   | 'ejecutar'
+  | 'comando_compuesto'
+  | 'comando compuesto'
   | 'delegar'
   | 'directorio_externo'
   | 'directorio externo'
@@ -58,6 +61,9 @@ export interface PorteroPermisos {
     herramienta: {
       nombre: string
       accionPermiso?: AccionPermiso | undefined
+      resolverAccion?:
+        | ((args: Record<string, unknown>) => AccionPermiso)
+        | undefined
       obtenerRecurso?:
         | ((args: Record<string, unknown>) => string | string[])
         | undefined

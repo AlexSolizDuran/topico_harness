@@ -6,6 +6,9 @@ export interface EntradaHerramienta {
   descripcion: string
   esquema: Record<string, unknown>
   accionPermiso?: AccionPermiso | undefined
+  resolverAccion?:
+    | ((argumentos: Record<string, unknown>) => AccionPermiso)
+    | undefined
   obtenerRecurso?:
     | ((argumentos: Record<string, unknown>) => string | string[])
     | undefined

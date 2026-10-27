@@ -46,18 +46,6 @@ function acortarRuta(ruta: string): string {
   return `…${ruta.slice(-41)}`
 }
 
-export const ComponentePromptSistema: React.FC<{ prompt: string }> = ({
-  prompt,
-}) => {
-  if (!prompt) return null
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text color="gray">sistema</Text>
-      <Text color="gray">{prompt}</Text>
-    </Box>
-  )
-}
-
 export const MensajeUsuario: React.FC<{ texto: string }> = ({ texto }) => (
   <Box marginY={1}>
     <Text bold color="green">
@@ -629,7 +617,6 @@ export const AppHarness: React.FC<{ estado: EstadoSesionVisual }> = ({
   return (
     <Box flexDirection="column" padding={1}>
       <BarraEstado estado={estado} />
-      <ComponentePromptSistema prompt={estado.promptSistema} />
 
       {estado.historial.map((elem) => (
         <ComponenteElemento key={elem.id} elemento={elem} />

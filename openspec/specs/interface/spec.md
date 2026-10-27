@@ -67,18 +67,18 @@ SHALL NOT descartar el texto escrito por el usuario al enviarlo.
 
 ---
 
-### Requirement: La interfaz muestra el prompt del sistema de forma persistente
-La interfaz SHALL mantener visible el prompt del sistema durante toda la sesión. La
-interfaz SHALL NOT permitir modificarlo. La interfaz SHALL mantenerlo visible aunque
-el historial se recorte o se resuma.
+### Requirement: La interfaz no muestra el prompt del sistema en la conversación
+La interfaz interactiva SHALL NOT mostrar el prompt del sistema en el área de
+conversación. La interfaz SHALL NOT permitir modificarlo. El prompt SHALL seguir
+enviándose al modelo en cada turno aunque no se muestre.
 
-#### Scenario: Visible durante toda la sesión
+#### Scenario: El prompt no ocupa espacio en la conversación
 - **WHEN** la sesión corre y el historial crece
-- **THEN** el prompt del sistema permanece visible
+- **THEN** el área de conversación no muestra el prompt del sistema
 
-#### Scenario: Sigue visible tras compactar
-- **WHEN** el historial del turno se recorta o se resume
-- **THEN** el prompt del sistema sigue visible
+#### Scenario: El prompt se sigue enviando al modelo
+- **WHEN** el turno consulta al provider
+- **THEN** el prompt del sistema se envía aunque no se muestre
 
 ---
 

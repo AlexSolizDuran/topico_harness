@@ -273,10 +273,10 @@ describe('interface Specification Tests', () => {
   })
 
   // --------------------------------------------------------------------------
-  // Requirement: La interfaz muestra el prompt del sistema de forma persistente
+  // Requirement: La interfaz no muestra el prompt del sistema en la conversación
   // --------------------------------------------------------------------------
-  describe('Requirement: La interfaz muestra el prompt del sistema de forma persistente', () => {
-    it('Visible durante toda la sesión', async () => {
+  describe('Requirement: La interfaz no muestra el prompt del sistema en la conversación', () => {
+    it('El prompt no ocupa espacio en la conversación', async () => {
       // WHEN la sesión corre y el historial crece
       const sesion = new SesionInteractiva({
         promptSistema: 'Eres un asistente experto',
@@ -288,21 +288,28 @@ describe('interface Specification Tests', () => {
 
       await sesion.enviarMensaje('Hola')
 
-      // THEN el prompt del sistema permanece visible
-      expect(sesion.obtenerEstado().promptSistema).toBe(
-        'Eres un asistente experto',
-      )
+      // THEN el área de conversación no muestra el prompt del sistema
+      const historial = JSON.stringify(sesion.obtenerEstado().historial)
+      expect(historial).not.toContain('Eres un asistente experto')
     })
 
-    it('Sigue visible tras compactar', () => {
-      // WHEN el historial del turno se recorta o se resume
-      const estado = crearEstadoInicial('Prompt inicial inmutable')
-      estado.historial = [
-        { id: '1', tipo: 'aviso', texto: 'Historial compactado' },
-      ]
+    it('El prompt se sigue enviando al modelo', async () => {
+      // WHEN el turno consulta al provider
+      const proveedor = new ProveedorSimulado({
+        respuestas: [{ fragmentosTexto: ['Respuesta'] }],
+      })
+      const sesion = new SesionInteractiva({
+        promptSistema: 'Eres un asistente experto',
+        proveedor,
+        registro: new RegistroHerramientas(),
+      })
 
-      // THEN el prompt del sistema sigue visible
-      expect(estado.promptSistema).toBe('Prompt inicial inmutable')
+      await sesion.enviarMensaje('Hola')
+
+      // THEN el prompt del sistema se envía aunque no se muestre
+      expect(proveedor.peticionesRecibidas[0]?.sistema).toBe(
+        'Eres un asistente experto',
+      )
     })
   })
 
