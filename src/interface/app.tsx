@@ -234,43 +234,23 @@ export interface PropsBarraEstado {
   directorio?: string | undefined
 }
 
-export const BarraEstado: React.FC<PropsBarraEstado> = ({
-  estado,
-  directorio,
-}) => {
+export const BarraEstado: React.FC<PropsBarraEstado> = ({ estado }) => {
   const contexto = estado.contexto
-  const uso = `${formatearTokens(contexto.tokensActuales)}/${formatearTokens(
-    contexto.limitePresupuesto,
-  )}`
-  const porcentaje = Math.round(contexto.porcentajeUso)
-  const etiquetaEstado = estado.esperandoAprobacion
-    ? 'esperando aprobación'
-    : estado.turnoEnCurso
-      ? 'trabajando'
-      : 'listo'
-  const agente = estado.agenteActivo || 'build'
-  const tareasBackground = estado.tareasBackground ?? 0
+  const usados = contexto.tokensActuales
+  const limite = contexto.limitePresupuesto
+  const uso = `${formatearTokens(usados)}/${formatearTokens(limite)}`
+  const porcentaje =
+    limite > 0 ? Math.min(100, Math.round((usados / limite) * 100)) : 0
+  const colorTokens =
+    porcentaje >= 95 ? 'red' : porcentaje >= 80 ? 'yellow' : 'green'
+  const modelo = estado.modeloActivo || 'sin modelo'
+  const nombreModelo = modelo.includes('/') ? modelo.split('/').pop() : modelo
 
   return (
-    <Box
-      borderStyle="single"
-      borderColor="gray"
-      justifyContent="space-between"
-      paddingX={1}
-    >
-      <Text bold color="cyan">
-        ◆ {estado.modeloActivo || 'sin modelo'} · [{agente}]
-        {estado.sesionId ? ` · ses ${estado.sesionId}` : ''}
-        {tareasBackground > 0 ? ` · ${tareasBackground} bg` : ''}
-      </Text>
-      {directorio ? (
-        <Text color="gray" wrap="truncate">
-          {acortarRuta(directorio)}
-        </Text>
-      ) : null}
-      <Text color={estado.turnoEnCurso ? 'yellow' : 'green'}>
-        {etiquetaEstado} · {uso} ({porcentaje}%
-        {contexto.esEstimado ? ' est.' : ''})
+    <Box borderStyle="single" borderColor="gray" paddingX={1}>
+      <Text color={colorTokens}>
+        Modelo: {nombreModelo} · Tokens: {uso} · {porcentaje}%
+        {contexto.esEstimado ? ' (est.)' : ''}
       </Text>
     </Box>
   )
