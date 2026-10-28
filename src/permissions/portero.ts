@@ -133,7 +133,11 @@ export function proponerPatronPorDefecto(
   recurso: string,
 ): string {
   const canon = normalizarAccionPermiso(accion)
-  if (canon === 'shell' || canon === 'shell_compuesto') {
+  if (
+    canon === 'shell' ||
+    canon === 'shell_compuesto' ||
+    canon === 'shell_redireccion'
+  ) {
     const partes = recurso.trim().split(/\s+/).filter(Boolean)
     if (partes.length === 0) return '*'
     const prefijo = partes.slice(0, Math.min(2, partes.length)).join(' ')
@@ -236,6 +240,9 @@ export class GestorPermisos implements PorteroPermisos {
       proponerPatron?:
         | ((args: Record<string, unknown>, recurso: string) => string)
         | undefined
+      motivoAprobacionObligatoria?:
+        | ((args: Record<string, unknown>) => string | undefined)
+        | undefined
     },
     argumentos: Record<string, unknown>,
   ): EvaluacionPermiso {
@@ -261,11 +268,35 @@ export class GestorPermisos implements PorteroPermisos {
       ? herramienta.proponerPatron(argumentos, resultado.recurso)
       : proponerPatronPorDefecto(resultado.accion, resultado.recurso)
 
+    const motivo = herramienta.motivoAprobacionObligatoria?.(argumentos)
+
+    if (resultado.efecto === 'denegar') {
+      return {
+        efecto: 'denegar',
+        accion: resultado.accion,
+        recurso: resultado.recurso,
+        patronSugerido,
+        obligatoria: false,
+      }
+    }
+
+    if (motivo) {
+      return {
+        efecto: 'consultar',
+        accion: resultado.accion,
+        recurso: resultado.recurso,
+        patronSugerido,
+        obligatoria: true,
+        motivo,
+      }
+    }
+
     return {
       efecto: resultado.efecto,
       accion: resultado.accion,
       recurso: resultado.recurso,
       patronSugerido,
+      obligatoria: false,
     }
   }
 
@@ -310,19 +341,21 @@ export class GestorPermisos implements PorteroPermisos {
       const finalizar = (decision: DecisionAprobacion): void => {
         if (resuelta) return
         resuelta = true
+        const efectiva: DecisionAprobacion =
+          solicitud.obligatoria && decision === 'siempre' ? 'una_vez' : decision
         this.pendientes.delete(solicitud.id)
         if (senalCancelacion) {
           senalCancelacion.removeEventListener('abort', alAbortar)
         }
-        if (decision === 'siempre') {
+        if (efectiva === 'siempre') {
           this.registrarAprobacionSiempre(
             solicitud.accion,
             solicitud.patronSugerido,
           )
-        } else if (decision === 'denegar') {
+        } else if (efectiva === 'denegar') {
           this.rechazarTodasLasPendientes()
         }
-        resolve(decision)
+        resolve(efectiva)
       }
 
       const alAbortar = (): void => {

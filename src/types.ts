@@ -12,6 +12,7 @@ export type AccionPermisoCanon =
   | 'edit'
   | 'shell'
   | 'shell_compuesto'
+  | 'shell_redireccion'
   | 'subagent'
   | 'external_directory'
 
@@ -26,6 +27,9 @@ export type AccionPermiso =
   | 'ejecutar'
   | 'comando_compuesto'
   | 'comando compuesto'
+  | 'redireccion'
+  | 'redirección'
+  | 'comando_redirigido'
   | 'delegar'
   | 'directorio_externo'
   | 'directorio externo'
@@ -47,6 +51,8 @@ export interface SolicitudAprobacion {
   accion: AccionPermisoCanon
   recurso: string
   patronSugerido: string
+  obligatoria: boolean
+  motivo?: string | undefined
 }
 
 export interface EvaluacionPermiso {
@@ -54,6 +60,8 @@ export interface EvaluacionPermiso {
   accion: AccionPermisoCanon
   recurso: string
   patronSugerido: string
+  obligatoria: boolean
+  motivo?: string | undefined
 }
 
 export interface PorteroPermisos {
@@ -69,6 +77,9 @@ export interface PorteroPermisos {
         | undefined
       proponerPatron?:
         | ((args: Record<string, unknown>, recurso: string) => string)
+        | undefined
+      motivoAprobacionObligatoria?:
+        | ((args: Record<string, unknown>) => string | undefined)
         | undefined
     },
     argumentos: Record<string, unknown>,

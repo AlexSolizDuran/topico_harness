@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import type { EntradaHerramienta } from '../core/registry.js'
 import { detectarEol, normalizarEol, restaurarEol } from './eol.js'
-import { resolverRutaSegura } from './path.js'
+import { motivoAprobacionRuta, resolverRuta } from './path.js'
 
 export function crearHerramientaEdicion(
   directorioProyecto: string = process.cwd(),
@@ -30,6 +30,8 @@ export function crearHerramientaEdicion(
     },
     accionPermiso: 'edit',
     obtenerRecurso: (args) => String(args.ruta ?? ''),
+    motivoAprobacionObligatoria: (args) =>
+      motivoAprobacionRuta(String(args.ruta ?? ''), directorioProyecto),
     admiteParalelo: false,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
@@ -40,7 +42,7 @@ export function crearHerramientaEdicion(
         throw new Error('El texto a buscar no puede estar vacío.')
       }
 
-      const rutaAbsoluta = resolverRutaSegura(ruta, directorioProyecto)
+      const rutaAbsoluta = resolverRuta(ruta, directorioProyecto)
       const contenidoOriginal = await readFile(rutaAbsoluta, 'utf-8')
       const eolOriginal = detectarEol(contenidoOriginal)
 

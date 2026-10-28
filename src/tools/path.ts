@@ -9,13 +9,6 @@ import {
 } from 'node:path'
 import { esRutaSensible } from './ignore.js'
 
-export class ErrorRutaInvalida extends Error {
-  constructor(mensaje: string) {
-    super(mensaje)
-    this.name = 'ErrorRutaInvalida'
-  }
-}
-
 export interface ApiRutas {
   resolve: (...rutas: string[]) => string
   relative: (desde: string, hasta: string) => string
@@ -34,19 +27,17 @@ export const RUTAS_NODE: ApiRutas = {
   join,
 }
 
-function verificarDentro(
-  absoluta: string,
-  base: string,
-  pathApi: ApiRutas,
-  rutaOriginal: string,
-): void {
-  const relativa = pathApi.relative(base, absoluta)
-  if (relativa === '') return
-  if (relativa.startsWith('..') || pathApi.isAbsolute(relativa)) {
-    throw new ErrorRutaInvalida(
-      `Ruta fuera del proyecto no permitida: '${rutaOriginal}'`,
-    )
-  }
+export interface RiesgoRuta {
+  fueraDelProyecto: boolean
+  sensible: boolean
+}
+
+function esFuera(relativa: string, pathApi: ApiRutas): boolean {
+  return (
+    relativa === '..' ||
+    relativa.startsWith('../') ||
+    pathApi.isAbsolute(relativa)
+  )
 }
 
 /**
@@ -81,29 +72,63 @@ function realpathSeguro(ruta: string): string {
 }
 
 /**
- * Resuelve una ruta asegurando que apunte al interior del proyecto.
- * `pathApi` permite probar el comportamiento de Windows desde Linux.
+ * Resuelve una ruta a absoluta sin restricciones. La decisión de permitir una
+ * ruta fuera del proyecto o sensible la toma el portero, no esta función.
  */
-export function resolverRutaSegura(
+export function resolverRuta(
   rutaEntrada: string,
   directorioProyecto: string = process.cwd(),
   pathApi: ApiRutas = RUTAS_NODE,
 ): string {
   const base = pathApi.resolve(directorioProyecto)
-  const absoluta = pathApi.isAbsolute(rutaEntrada)
+  return pathApi.isAbsolute(rutaEntrada)
     ? pathApi.resolve(rutaEntrada)
     : pathApi.resolve(base, rutaEntrada)
+}
 
-  verificarDentro(absoluta, base, pathApi, rutaEntrada)
-
+/**
+ * Clasifica una ruta para que la herramienta pueda declarar un motivo de
+ * aprobación obligatoria. Sigue symlinks: una ruta que parece interna pero
+ * resuelve fuera del proyecto cuenta como externa.
+ */
+export function evaluarRiesgoRuta(
+  rutaEntrada: string,
+  directorioProyecto: string = process.cwd(),
+  pathApi: ApiRutas = RUTAS_NODE,
+): RiesgoRuta {
+  const base = pathApi.resolve(directorioProyecto)
+  const absoluta = resolverRuta(rutaEntrada, directorioProyecto, pathApi)
   const relativa = pathApi.relative(base, absoluta).replace(/\\/g, '/')
-  if (esRutaSensible(relativa)) {
-    throw new ErrorRutaInvalida(`Ruta protegida: '${rutaEntrada}'`)
-  }
+  const sensible = esRutaSensible(relativa)
 
   const baseReal = realpathSeguro(base)
   const absolutaReal = resolverRutaReal(absoluta, pathApi)
-  verificarDentro(absolutaReal, baseReal, pathApi, rutaEntrada)
+  const relativaReal = pathApi
+    .relative(baseReal, absolutaReal)
+    .replace(/\\/g, '/')
 
-  return absoluta
+  return {
+    fueraDelProyecto:
+      esFuera(relativa, pathApi) || esFuera(relativaReal, pathApi),
+    sensible,
+  }
+}
+
+/**
+ * Motivo de aprobación obligatoria para una ruta. Devuelve `undefined` cuando la
+ * ruta es interna y no es sensible.
+ */
+export function motivoAprobacionRuta(
+  rutaEntrada: string,
+  directorioProyecto: string = process.cwd(),
+  pathApi: ApiRutas = RUTAS_NODE,
+): string | undefined {
+  const riesgo = evaluarRiesgoRuta(rutaEntrada, directorioProyecto, pathApi)
+  if (riesgo.fueraDelProyecto) {
+    return `La ruta '${rutaEntrada}' queda fuera del proyecto.`
+  }
+  if (riesgo.sensible) {
+    return `La ruta '${rutaEntrada}' es un archivo protegido.`
+  }
+  return undefined
 }

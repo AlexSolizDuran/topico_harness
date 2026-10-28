@@ -320,7 +320,10 @@ export function AppInteractiva({
         sesion.responderAprobacion('una_vez')
         return
       }
-      if (input === '2' || input === 'a') {
+      if (
+        (input === '2' || input === 'a') &&
+        !estado.aprobacionPendiente.obligatoria
+      ) {
         sesion.responderAprobacion('siempre')
         return
       }

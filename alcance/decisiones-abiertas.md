@@ -87,6 +87,11 @@ pasa de "nice" a "necesario desde el día uno".
 peligrosos** como mínimo. Es media hora de trabajo y evita el peor escenario
 (`rm -rf`).
 
+**Revisado (`250-aprobacion-obligatoria`):** la lista negra no bloquea. El
+catálogo y la lista negra son etiquetas de riesgo que elevan la operación a una
+aprobación obligatoria; la persona decide. Solo una regla `denegar` configurada
+impide la ejecución.
+
 ### 3. ¿Cómo se persisten las sesiones?
 
 **Impacto:** el Nivel 4. Si no hay persistencia, cerrar pierde todo.
@@ -160,6 +165,10 @@ respuesta, gratis), con `length/4` como fallback y margen conservador.
 
 **Recomendación:** mixto por efecto. Lecturas sin gate, escrituras con gate,
 `bash` con lista negra. Es el patrón que usa OpenCode.
+
+**Revisado (`250-aprobacion-obligatoria`):** el gate no rechaza. Lo riesgoso pide
+aprobación obligatoria con el motivo a la vista y la persona decide; sin terminal
+interactiva se deniega.
 
 ## Cómo se resuelven
 

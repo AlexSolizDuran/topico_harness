@@ -27,8 +27,14 @@ Windows se resolvió con PowerShell y una allowlist (`120-shell-windows`).
 completo en Unix. Se descartó la clasificación por categoría de efecto: la
 allowlist de Windows y la lista negra de Unix alcanzan.
 
-La lista negra bloquea **nombres**, nunca cadenas. `rm -rf` es evadible con
-`rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`.
+**Revisado (`250-aprobacion-obligatoria`).** El catálogo y la lista negra dejaron
+de rechazar: son etiquetas de riesgo que elevan la operación a una aprobación
+obligatoria. Nada se bloquea; la persona decide. Solo una regla `denegar`
+configurada impide la ejecución, y sin terminal interactiva se deniega.
+
+La lista negra evalúa **nombres**, nunca cadenas. `rm -rf` es evadible con
+`rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`; por eso no se usa
+para decidir, solo para avisar.
 
 ### La interfaz sí es una capacidad
 

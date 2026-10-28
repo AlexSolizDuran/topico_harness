@@ -15,10 +15,10 @@ import {
   crearHerramientaShell,
   ErrorEsquemaRequerido,
   ErrorPermisoHerramientaRequerido,
-  ErrorRutaInvalida,
   MAXIMO_CONTENIDO_POR_DEFECTO,
+  motivoAprobacionRuta,
   registrarHerramientaConValidacion,
-  resolverRutaSegura,
+  resolverRuta,
   truncarContenido,
 } from '../../src/tools/index.js'
 import type { EstadoTurno, EventoTurno } from '../../src/types.js'
@@ -131,15 +131,16 @@ describe('tools Specification Tests', () => {
 
     it('La ruta no es escribible', async () => {
       // WHEN la ruta no permite escritura
+      mkdirSync(join(tempDir, 'es_un_directorio'))
       const toolWrite = crearHerramientaEscritura(tempDir)
 
-      // Intentar escribir fuera del proyecto
+      // THEN el sistema devuelve un mensaje de error y ningún archivo cambia
       await expect(
         toolWrite.ejecutar({
-          ruta: '../../no_permitido.txt',
+          ruta: 'es_un_directorio',
           contenido: 'intruso',
         }),
-      ).rejects.toThrow(ErrorRutaInvalida)
+      ).rejects.toThrow()
     })
   })
 
@@ -300,26 +301,28 @@ describe('tools Specification Tests', () => {
       expect(res).toBe('v20.0.0')
     })
 
-    it('El comando no está en el catálogo', async () => {
+    it('El comando no está en el catálogo', () => {
       // WHEN el modelo solicita un comando ausente del catálogo de la plataforma activa
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res = await toolShell?.ejecutar({
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
         comando: 'comando_no_existente_xyz',
       })
 
-      // THEN el sistema lo rechaza sin ejecutarlo y explica que no está disponible
-      expect(res).toContain('no está disponible en el catálogo')
+      // THEN el sistema pide aprobación obligatoria y explica que no pertenece al catálogo
+      expect(motivo).toContain('no pertenece al catálogo')
     })
 
-    it('Un comando de otra plataforma', async () => {
+    it('Un comando de otra plataforma', () => {
       // WHEN el modelo solicita un comando que existe en otra plataforma pero no en la activa
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res = await toolShell?.ejecutar({ comando: 'dir' })
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'dir',
+      })
 
-      // THEN el sistema lo rechaza en lugar de buscar un equivalente por su cuenta
-      expect(res).toContain('no está disponible en el catálogo')
+      // THEN el sistema pide aprobación obligatoria en lugar de buscar un equivalente por su cuenta
+      expect(motivo).toContain('no pertenece al catálogo')
     })
 
     it('En Windows se usa PowerShell', async () => {
@@ -353,27 +356,19 @@ describe('tools Specification Tests', () => {
       expect(winTool?.nombre).toBe('shell')
     })
 
-    it('Un comando compuesto', async () => {
-      // WHEN el modelo solicita una línea que encadena o compone varios comandos
-      let ejecutado = false
-      const toolShell = crearHerramientaShell({
-        plataforma: 'win32',
-        ejecutor: async () => {
-          ejecutado = true
-          return { salida: '', codigoSalida: 0 }
-        },
+    it('Un comando compuesto', () => {
+      // WHEN el modelo solicita en Windows una línea que compone varios comandos
+      const toolShell = crearHerramientaShell({ plataforma: 'win32' })
+
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'Get-ChildItem; Get-Location',
       })
 
-      const res = await toolShell?.ejecutar({
-        comando: 'Get-ChildItem; Remove-Item archivo.txt',
-      })
-
-      // THEN el sistema la rechaza sin ejecutar y explica la regla
-      expect(res).toContain('invocación simple')
-      expect(ejecutado).toBe(false)
+      // THEN el sistema pide aprobación obligatoria
+      expect(motivo).toContain('Windows')
     })
 
-    it('Los comandos de borrado no están en el catálogo de Windows', async () => {
+    it('Los comandos de borrado no están en el catálogo de Windows', () => {
       const toolShell = crearHerramientaShell({ plataforma: 'win32' })
 
       for (const comando of [
@@ -384,8 +379,8 @@ describe('tools Specification Tests', () => {
         'rmdir carpeta',
         'rm archivo.txt',
       ]) {
-        const res = await toolShell?.ejecutar({ comando })
-        expect(res).toContain('no está disponible en el catálogo')
+        const motivo = toolShell?.motivoAprobacionObligatoria?.({ comando })
+        expect(motivo).toContain('no pertenece al catálogo')
       }
     })
 
@@ -430,35 +425,32 @@ describe('tools Specification Tests', () => {
       ).toBe('shell_compuesto')
     })
 
-    it('Un segmento prohibido bloquea la línea completa', async () => {
-      // WHEN el modelo intenta encadenar un comando permitido con uno bloqueado
-      let ejecutado = false
-      const toolShell = crearHerramientaShell({
-        plataforma: 'linux',
-        ejecutor: async () => {
-          ejecutado = true
-          return { salida: '', codigoSalida: 0 }
-        },
-      })
+    it('Un segmento de la lista negra pide aprobación para la línea completa', () => {
+      // WHEN una línea compuesta incluye un segmento de la lista negra
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res = await toolShell?.ejecutar({
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
         comando: 'cat archivo.txt && rm -rf /',
       })
 
-      // THEN rechaza la línea completa sin ejecutar ningún segmento
-      expect(res).toContain("'rm'")
-      expect(res).toContain('lista negra')
-      expect(ejecutado).toBe(false)
+      // THEN el sistema pide aprobación obligatoria para la línea completa con el motivo a la vista
+      expect(motivo).toContain("'rm'")
+      expect(motivo).toContain('lista negra')
     })
 
-    it('Un intérprete con -c cuenta como compuesto', () => {
+    it('Un intérprete con -c pide aprobación obligatoria', () => {
       // WHEN el modelo ejecuta código a través de un intérprete
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      // THEN no se evalúa como una invocación simple
+      // THEN se evalúa como compuesto y pide aprobación obligatoria
       expect(
         toolShell?.resolverAccion?.({ comando: 'bash -c "rm -rf /"' }),
       ).toBe('shell_compuesto')
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'bash -c "rm -rf /"',
+        }),
+      ).toContain('intérprete')
       expect(
         toolShell?.resolverAccion?.({ comando: 'node -e "console.log(1)"' }),
       ).toBe('shell_compuesto')
@@ -470,14 +462,16 @@ describe('tools Specification Tests', () => {
       )
     })
 
-    it('La sustitución de comandos se rechaza', async () => {
-      // WHEN la línea incluye $() o backticks fuera de comillas
+    it('La sustitución de comandos pide aprobación obligatoria', () => {
+      // WHEN la línea incluye $() o backticks fuera de comillas simples
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res = await toolShell?.ejecutar({ comando: 'echo $(rm -rf /)' })
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'echo $(rm -rf /)',
+      })
 
-      // THEN se rechaza sin ejecutar
-      expect(res).toContain('sustitución')
+      // THEN el sistema pide aprobación obligatoria con el motivo a la vista
+      expect(motivo).toContain('sustitución')
     })
   })
 
@@ -514,29 +508,46 @@ describe('tools Specification Tests', () => {
       }
     })
 
-    it('Un directorio fuera del proyecto', async () => {
+    it('Un directorio fuera del proyecto', () => {
       // WHEN el modelo indica un directorio que queda fuera del proyecto
       const raiz = mkdtempSync(join(tmpdir(), 'harness-shell-'))
-      let ejecutado = false
 
       try {
         const toolShell = crearHerramientaShell({
           plataforma: 'linux',
           directorioProyecto: raiz,
-          ejecutor: async () => {
-            ejecutado = true
-            return { salida: '', codigoSalida: 0 }
-          },
         })
 
-        const res = await toolShell?.ejecutar({
+        const motivo = toolShell?.motivoAprobacionObligatoria?.({
           comando: 'pwd',
           directorio: '..',
         })
 
-        // THEN rechaza la solicitud sin ejecutar el comando
-        expect(res).toContain('fuera del proyecto')
-        expect(ejecutado).toBe(false)
+        // THEN el sistema pide aprobación obligatoria antes de ejecutar
+        expect(motivo).toContain('fuera del proyecto')
+      } finally {
+        rmSync(raiz, { recursive: true, force: true })
+      }
+    })
+
+    it('Un directorio sensible', () => {
+      // WHEN el modelo indica un directorio dentro de .harness
+      const raiz = mkdtempSync(join(tmpdir(), 'harness-shell-'))
+      mkdirSync(join(raiz, '.harness'))
+
+      try {
+        const toolShell = crearHerramientaShell({
+          plataforma: 'linux',
+          directorioProyecto: raiz,
+        })
+
+        const motivo = toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'pwd',
+          directorio: '.harness',
+        })
+
+        // THEN el sistema pide aprobación obligatoria antes de ejecutar
+        expect(motivo).toContain('protegida')
       } finally {
         rmSync(raiz, { recursive: true, force: true })
       }
@@ -568,6 +579,177 @@ describe('tools Specification Tests', () => {
       } finally {
         rmSync(raiz, { recursive: true, force: true })
       }
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: La herramienta de ejecución pide aprobación obligatoria ante una redirección
+  // --------------------------------------------------------------------------
+  describe('Requirement: La herramienta de ejecución pide aprobación obligatoria ante una redirección', () => {
+    it('Una redirección de escritura a un archivo', () => {
+      // WHEN la línea escribe en un archivo con >, >>, >|, &> o <>
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      for (const comando of [
+        'echo hola > out.txt',
+        'echo hola >> out.txt',
+        'echo hola >| out.txt',
+        'echo hola &> out.txt',
+        'echo hola <> out.txt',
+      ]) {
+        // THEN el sistema pide aprobación obligatoria y muestra la línea completa
+        expect(toolShell?.motivoAprobacionObligatoria?.({ comando })).toContain(
+          'out.txt',
+        )
+      }
+      expect(
+        toolShell?.resolverAccion?.({ comando: 'echo hola > out.txt' }),
+      ).toBe('shell_redireccion')
+    })
+
+    it('Una redirección fuera del proyecto', () => {
+      // WHEN la línea escribe en una ruta fuera del proyecto
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'echo hola > ../fuera.txt',
+        }),
+      ).toBeDefined()
+    })
+
+    it('Una redirección a un archivo sensible', () => {
+      // WHEN la línea escribe en .env, .env.* o dentro de .harness
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'echo x > .env' }),
+      ).toBeDefined()
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'echo x > .harness/log',
+        }),
+      ).toBeDefined()
+    })
+
+    it('Una redirección de entrada', () => {
+      // WHEN la línea lee un archivo con < o n<
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'cat < a.txt' }),
+      ).toContain('a.txt')
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'cat 0< a.txt' }),
+      ).toContain('a.txt')
+    })
+
+    it('Un heredoc', () => {
+      // WHEN la línea usa <<, <<- o <<<
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria y no intenta validar el contenido
+      for (const comando of ['cat <<EOF', 'cat <<-EOF', 'cat <<< hola']) {
+        expect(toolShell?.motivoAprobacionObligatoria?.({ comando })).toContain(
+          'no se puede verificar',
+        )
+      }
+    })
+
+    it('Una sustitución de proceso', () => {
+      // WHEN la línea usa <(…) o >(…)
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'cat <(ls)' }),
+      ).toBeDefined()
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'tee >(cat)' }),
+      ).toBeDefined()
+    })
+
+    it('La redirección a /dev/null no pide aprobación', () => {
+      // WHEN la línea redirige a /dev/null
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema la evalúa como invocación simple
+      for (const comando of [
+        'echo hola > /dev/null',
+        'echo hola 2>/dev/null',
+      ]) {
+        expect(
+          toolShell?.motivoAprobacionObligatoria?.({ comando }),
+        ).toBeUndefined()
+        expect(toolShell?.resolverAccion?.({ comando })).toBe('shell')
+      }
+    })
+
+    it('La duplicación de descriptores no pide aprobación', () => {
+      // WHEN la línea usa 2>&1, n>&m o n>&-
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema la evalúa como invocación simple
+      for (const comando of [
+        'node app.js 2>&1',
+        'node app.js 3>&1',
+        'node app.js 2>&-',
+      ]) {
+        expect(
+          toolShell?.motivoAprobacionObligatoria?.({ comando }),
+        ).toBeUndefined()
+        expect(toolShell?.resolverAccion?.({ comando })).toBe('shell')
+      }
+    })
+
+    it('Un `>` entre comillas no es una redirección', () => {
+      // WHEN el carácter > aparece dentro de comillas
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema lo trata como texto y no pide aprobación
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'echo "a > b"',
+        }),
+      ).toBeUndefined()
+      expect(toolShell?.resolverAccion?.({ comando: 'echo "a > b"' })).toBe(
+        'shell',
+      )
+    })
+
+    it('Una redirección sin destino', () => {
+      // WHEN la línea termina en > sin un destino
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'echo hola >' }),
+      ).toContain('destino')
+    })
+
+    it('Una línea que solo redirige', () => {
+      // WHEN la línea no tiene comando y solo redirige a un archivo
+      const toolShell = crearHerramientaShell({ plataforma: 'linux' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: '> out.txt' }),
+      ).toContain('out.txt')
+    })
+
+    it('Una redirección en Windows', () => {
+      // WHEN la plataforma activa es Windows y la línea redirige
+      const toolShell = crearHerramientaShell({ plataforma: 'win32' })
+
+      // THEN el sistema pide aprobación obligatoria
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({
+          comando: 'Write-Output hola > out.txt',
+        }),
+      ).toBeDefined()
     })
   })
 
@@ -698,7 +880,7 @@ describe('tools Specification Tests', () => {
   describe('Requirement: Las rutas se resuelven igual en toda plataforma', () => {
     it('Separador invertido en Windows', () => {
       // WHEN el modelo pide un archivo con separador / y la plataforma activa usa \
-      const ruta = resolverRutaSegura('src/utils/test.ts', tempDir)
+      const ruta = resolverRuta('src/utils/test.ts', tempDir)
 
       // THEN el sistema lo encuentra igual
       expect(ruta).toBe(join(tempDir, 'src', 'utils', 'test.ts'))
@@ -706,7 +888,7 @@ describe('tools Specification Tests', () => {
 
     it('Ruta relativa al proyecto', () => {
       // WHEN el modelo pide un archivo con una ruta relativa
-      const ruta = resolverRutaSegura('archivo.txt', tempDir)
+      const ruta = resolverRuta('archivo.txt', tempDir)
 
       // THEN el sistema lo resuelve respecto del directorio del proyecto
       expect(ruta).toBe(join(tempDir, 'archivo.txt'))
@@ -714,38 +896,45 @@ describe('tools Specification Tests', () => {
 
     it('La ruta sale del proyecto', () => {
       // WHEN el modelo pide un archivo fuera del directorio del proyecto
-      // THEN el sistema rechaza la ruta
-      expect(() => {
-        resolverRutaSegura('../../etc/passwd', tempDir)
-      }).toThrow(ErrorRutaInvalida)
+      const motivo = motivoAprobacionRuta('../../etc/passwd', tempDir)
+
+      // THEN el sistema pide aprobación obligatoria y muestra la ruta
+      expect(motivo).toContain('fuera del proyecto')
     })
   })
 
   // --------------------------------------------------------------------------
-  // Requirement: Un comando de la lista negra no se ejecuta
+  // Requirement: Un comando de la lista negra pide aprobación obligatoria
   // --------------------------------------------------------------------------
-  describe('Requirement: Un comando de la lista negra no se ejecuta', () => {
-    it('Comando bloqueado', async () => {
+  describe('Requirement: Un comando de la lista negra pide aprobación obligatoria', () => {
+    it('Comando de la lista negra', () => {
       // WHEN el modelo solicita un comando de la lista negra de la plataforma activa
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res = await toolShell?.ejecutar({ comando: 'rm archivo.txt' })
+      const motivo = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'rm archivo.txt',
+      })
 
-      // THEN el sistema lo rechaza sin ejecutarlo y devuelve el motivo al modelo como texto
-      expect(res).toContain('lista negra de comandos restringidos')
+      // THEN el sistema pide aprobación obligatoria con el comando y el motivo a la vista
+      expect(motivo).toContain("'rm'")
+      expect(motivo).toContain('lista negra')
     })
 
-    it('El bloqueo es por nombre completo', async () => {
-      // WHEN un comando bloqueado se solicita con sus opciones en otro orden o en formato largo
+    it('El riesgo es por nombre completo', () => {
+      // WHEN un comando de la lista negra se solicita con sus opciones en otro orden o en formato largo
       const toolShell = crearHerramientaShell({ plataforma: 'linux' })
 
-      const res1 = await toolShell?.ejecutar({ comando: 'rm -rf /' })
-      const res2 = await toolShell?.ejecutar({
+      const res1 = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'rm -rf /',
+      })
+      const res2 = toolShell?.motivoAprobacionObligatoria?.({
         comando: 'rm --recursive --force /',
       })
-      const res3 = await toolShell?.ejecutar({ comando: 'rm -r -f /' })
+      const res3 = toolShell?.motivoAprobacionObligatoria?.({
+        comando: 'rm -r -f /',
+      })
 
-      // THEN el sistema lo rechaza igualmente
+      // THEN el sistema pide aprobación obligatoria igualmente
       expect(res1).toContain('lista negra')
       expect(res2).toContain('lista negra')
       expect(res3).toContain('lista negra')
@@ -758,9 +947,11 @@ describe('tools Specification Tests', () => {
         ejecutor: async () => ({ salida: 'commit abc1234', codigoSalida: 0 }),
       })
 
+      // THEN el sistema lo ejecuta sin consultar
+      expect(
+        toolShell?.motivoAprobacionObligatoria?.({ comando: 'git status' }),
+      ).toBeUndefined()
       const res = await toolShell?.ejecutar({ comando: 'git status' })
-
-      // THEN el sistema lo ejecuta
       expect(res).toBe('commit abc1234')
     })
   })

@@ -16,7 +16,7 @@ context: |
     2  Gestion de contexto: presupuesto, recorte, compactacion.
     3  Subagentes con contexto aislado.
     Ademas: agentes primarios, permisos, aprobaciones, tandas, persistencia de
-    sesiones y ramas (changes 150 a 230).
+    sesiones y ramas (changes 150 a 250).
     Fuera de alcance: hooks, sandbox, LSP, MCP, memoria.
     La escalera completa esta documentada en `alcance/`, que es referencia de
     razonamiento y no contrato. El contrato vive en `openspec/specs/`.
@@ -49,28 +49,28 @@ context: |
     escenario con cuerpo. Un escenario sin cuerpo bajo su encabezado no cuenta.
 
   CATALOGO Y LISTA NEGRA DE COMANDOS
-    La herramienta de ejecucion no corre un binario cualquiera: corre contra el
-    catalogo de la plataforma activa, y cada plataforma declara el suyo.
+    La herramienta de ejecucion corre contra el catalogo de la plataforma activa,
+    y cada plataforma declara el suyo.
 
-    Encima del catalogo hay una lista negra por plataforma: comandos que existen y
-    que el harness NO ejecuta. El bloqueo ocurre en el harness, antes de invocar el
-    shell. El sistema operativo no participa y no sabe que la lista existe.
-    El rechazo devuelve un mensaje al modelo COMO TEXTO, no como excepcion, para
-    que elija otra alternativa en el siguiente paso.
+    El catalogo y la lista negra son etiquetas de riesgo, NO un muro. Nada se
+    rechaza: un comando fuera del catalogo, un comando de la lista negra, una
+    redireccion, un heredoc o una sustitucion de comandos piden aprobacion
+    OBLIGATORIA. La persona decide. Solo una regla `denegar` configurada impide la
+    ejecucion; ninguna regla `permitir` ni aprobacion guardada salta la aprobacion
+    obligatoria. Sin terminal interactiva se deniega: no hay a quien preguntar.
 
-    La lista negra bloquea el NOMBRE COMPLETO del comando, nunca combinaciones de
-    flags. Una cadena como `rm -rf` es evadible: `rm -fr`, `rm -r -f`, `rm -f -r` y
-    `rm --recursive --force` producen el mismo borrado. Verificado en GNU
-    coreutils 9.7.
+    La lista negra se evalua por el NOMBRE COMPLETO del comando, nunca por
+    combinaciones de flags. Una cadena como `rm -rf` es evadible: `rm -fr`,
+    `rm -r -f`, `rm -f -r` y `rm --recursive --force` producen el mismo borrado.
+    Verificado en GNU coreutils 9.7.
 
-    WINDOWS USA POWERSHELL CON ALLOWLIST. No hay lista negra en Windows: borrar
-    tiene nueve alias distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y
-    ademas se puede llamar como metodo .NET. Una lista negra por nombre no aguanta
-    eso, asi que la defensa es una allowlist explicita sobre PowerShell (git, npm,
-    node, cmdlets de lectura y edicion). El camino esta cubierto por tests
-    unitarios, pero no corrio en CI sobre Windows.
+    WINDOWS USA POWERSHELL. No hay lista negra en Windows: borrar tiene nueve
+    alias distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y ademas se
+    puede llamar como metodo .NET. El catalogo es explicito y la composicion pide
+    aprobacion obligatoria. El camino esta cubierto por tests unitarios, pero no
+    corrio en CI sobre Windows.
 
-    UNIX, bloqueados: rm, rmdir, unlink, shred, mkfs, dd, chmod, chown, chgrp,
+    UNIX, lista negra: rm, rmdir, unlink, shred, mkfs, dd, chmod, chown, chgrp,
     sudo, su, doas, mount, umount, kill, killall, pkill, shutdown, reboot, halt,
     poweroff.
 
@@ -85,21 +85,21 @@ context: |
     editar el spec.
 
   FLUJO DE ESTE REPO
-    `openspec/specs/` es el contrato acordado: 9 capacidades, 109 requisitos y
-    317 escenarios. Los 23 changes de `openspec/changes/archive/` ya lo implementaron.
+    `openspec/specs/` es el contrato acordado: 9 capacidades, 113 requisitos y
+    356 escenarios. Los 25 changes de `openspec/changes/archive/` ya lo implementaron.
     Los changes IMPLEMENTAN contra esos requisitos, no los vuelven a derivar. Al
     proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
     Los changes que solo materializan comportamiento ya especificado declaran
     `skip_specs: true` en su `.openspec.yaml` (010 a 050, 070, 080, 090 y 110).
     Los que ajustan el contrato traen deltas de spec (060, 100, 120, 130, 140,
-    150, 160, 170, 180, 190, 200, 210, 220 y 230).
+    150, 160, 170, 180, 190, 200, 210, 220, 230, 240 y 250).
 
   ESTADO
-    9 capacidades, 109 requisitos, 317 escenarios. Todo validado contra el schema
+    9 capacidades, 113 requisitos, 356 escenarios. Todo validado contra el schema
     `spec-driven`.
-    core (12) · provider (7) · tools (18) · context (10) · interface (22) · sesiones (11) · agents (6) · subagents (15) · permissions (8)
-    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 369 tests
+    core (12) · provider (7) · tools (21) · context (10) · interface (22) · sesiones (11) · agents (6) · subagents (15) · permissions (9)
+    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 406 tests
     y `npm run build` genera `dist/main.js`. La prueba de punta a punta contra
     OpenRouter paso en modo plano, con lectura real de archivos y cambio de
     modelo por `--modelo`.

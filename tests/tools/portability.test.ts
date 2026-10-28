@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,9 +15,10 @@ import {
   crearHerramientaGrep,
   crearHerramientaLectura,
   detectarEol,
-  ErrorRutaInvalida,
+  evaluarRiesgoRuta,
+  motivoAprobacionRuta,
   normalizarEol,
-  resolverRutaSegura,
+  resolverRuta,
   restaurarEol,
 } from '../../src/tools/index.js'
 
@@ -84,56 +86,101 @@ describe('Portabilidad de herramientas', () => {
   })
 
   describe('Rutas de Windows', () => {
-    it('acepta una ruta dentro del proyecto', () => {
-      const ruta = resolverRutaSegura('C:\\proy\\src\\a.ts', 'C:\\proy', win32)
+    it('Separador invertido en Windows', () => {
+      // WHEN el modelo pide un archivo con separador / y la plataforma usa \
+      const ruta = resolverRuta('C:/proy/src/a.ts', 'C:\\proy', win32)
+      // THEN el sistema lo encuentra igual
       expect(ruta).toBe('C:\\proy\\src\\a.ts')
     })
 
-    it('rechaza una ruta fuera del proyecto', () => {
-      expect(() =>
-        resolverRutaSegura('C:\\otro\\a.ts', 'C:\\proy', win32),
-      ).toThrow(ErrorRutaInvalida)
-    })
-
-    it('rechaza un .. que sale del proyecto', () => {
-      expect(() =>
-        resolverRutaSegura('..\\..\\etc\\passwd', 'C:\\proy\\sub', win32),
-      ).toThrow(ErrorRutaInvalida)
-    })
-
     it('tolera separadores mezclados', () => {
-      const ruta = resolverRutaSegura('C:/proy/src\\a.ts', 'C:\\proy', win32)
+      const ruta = resolverRuta('C:/proy/src\\a.ts', 'C:\\proy', win32)
       expect(ruta).toBe('C:\\proy\\src\\a.ts')
     })
 
     it('compara sin distinguir mayúsculas', () => {
-      const ruta = resolverRutaSegura('C:\\Proy\\a.ts', 'c:\\proy', win32)
+      const ruta = resolverRuta('C:\\Proy\\a.ts', 'c:\\proy', win32)
       expect(ruta.toLowerCase()).toContain('c:\\proy\\a.ts')
+    })
+
+    it('La ruta sale del proyecto', () => {
+      // WHEN el modelo pide un archivo fuera del directorio del proyecto
+      const riesgo = evaluarRiesgoRuta('C:\\otro\\a.ts', 'C:\\proy', win32)
+      const motivo = motivoAprobacionRuta('C:\\otro\\a.ts', 'C:\\proy', win32)
+
+      // THEN el sistema pide aprobación obligatoria y muestra la ruta
+      expect(riesgo.fueraDelProyecto).toBe(true)
+      expect(motivo).toContain('C:\\otro\\a.ts')
+    })
+
+    it('un .. que sale del proyecto pide aprobación', () => {
+      const motivo = motivoAprobacionRuta(
+        '..\\..\\etc\\passwd',
+        'C:\\proy\\sub',
+        win32,
+      )
+      expect(motivo).toContain('fuera del proyecto')
     })
   })
 
-  describe('Rutas protegidas', () => {
-    it('no lee el archivo .env', async () => {
+  describe('Rutas sensibles', () => {
+    it('Un archivo .env', async () => {
       writeFileSync(join(tempDir, '.env'), 'CLAVE_ENV=secreto', 'utf-8')
       const toolRead = crearHerramientaLectura(tempDir)
 
-      await expect(toolRead.ejecutar({ ruta: '.env' })).rejects.toThrow(
-        ErrorRutaInvalida,
+      // THEN el sistema pide aprobación obligatoria y nombra la ruta
+      expect(
+        toolRead.motivoAprobacionObligatoria?.({ ruta: '.env' }),
+      ).toContain('.env')
+      // La ejecución ya no rechaza: el portero decide antes.
+      await expect(toolRead.ejecutar({ ruta: '.env' })).resolves.toContain(
+        'CLAVE_ENV',
       )
     })
 
-    it('no lee el config local del harness', async () => {
-      mkdirSync(join(tempDir, '.harness'), { recursive: true })
-      writeFileSync(
-        join(tempDir, '.harness', 'config.json'),
-        '{"apiKey":"secreto"}',
-        'utf-8',
-      )
+    it('Un archivo .env.local', () => {
       const toolRead = crearHerramientaLectura(tempDir)
+      expect(
+        toolRead.motivoAprobacionObligatoria?.({ ruta: '.env.local' }),
+      ).toBeDefined()
+    })
 
-      await expect(
-        toolRead.ejecutar({ ruta: '.harness/config.json' }),
-      ).rejects.toThrow(ErrorRutaInvalida)
+    it('El config local del harness', () => {
+      const toolRead = crearHerramientaLectura(tempDir)
+      expect(
+        toolRead.motivoAprobacionObligatoria?.({
+          ruta: '.harness/config.json',
+        }),
+      ).toBeDefined()
+    })
+
+    it('Un archivo .env.example', () => {
+      const toolRead = crearHerramientaLectura(tempDir)
+      expect(
+        toolRead.motivoAprobacionObligatoria?.({ ruta: '.env.example' }),
+      ).toBeUndefined()
+    })
+
+    it('Una ruta interna común no pide aprobación', () => {
+      const toolRead = crearHerramientaLectura(tempDir)
+      expect(
+        toolRead.motivoAprobacionObligatoria?.({ ruta: 'src/a.ts' }),
+      ).toBeUndefined()
+    })
+
+    it('Un symlink que sale del proyecto', () => {
+      const externo = mkdtempSync(join(tmpdir(), 'harness-externo-'))
+      try {
+        writeFileSync(join(externo, 'a.ts'), 'x', 'utf-8')
+        symlinkSync(externo, join(tempDir, 'enlace'))
+        // WHEN la ruta está dentro pero el symlink la resuelve fuera
+        const motivo = motivoAprobacionRuta('enlace/a.ts', tempDir)
+        // THEN el sistema pide aprobación obligatoria
+        expect(motivo).toContain('fuera del proyecto')
+      } finally {
+        rmSync(join(tempDir, 'enlace'), { force: true })
+        rmSync(externo, { recursive: true, force: true })
+      }
     })
 
     it('grep no recorre .env ni .harness', async () => {

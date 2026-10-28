@@ -145,7 +145,7 @@ async function verificarPermisoDespacho(
 
   if (!opciones.portero.solicitarAprobacion) {
     return {
-      resultado: `ERROR: Se requiere aprobación interactiva para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}', pero no hay cliente interactivo.\nLa operación no se completó.`,
+      resultado: `ERROR: Se requiere aprobación interactiva para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}', pero no hay cliente interactivo.${evaluacion.motivo ? ` Motivo: ${evaluacion.motivo}.` : ''}\nLa operación no se completó.`,
       esError: true,
     }
   }
@@ -157,13 +157,16 @@ async function verificarPermisoDespacho(
       accion: evaluacion.accion,
       recurso: evaluacion.recurso,
       patronSugerido: evaluacion.patronSugerido,
+      obligatoria: evaluacion.obligatoria,
+      motivo: evaluacion.motivo,
     },
     opciones.senalCancelacion,
   )
 
   if (decision === 'denegar') {
+    const motivo = evaluacion.motivo ? ` Motivo: ${evaluacion.motivo}.` : ''
     return {
-      resultado: `ERROR: Aprobación denegada para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.\nLa operación no se completó.`,
+      resultado: `ERROR: Aprobación denegada para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.${motivo}\nLa operación no se completó.`,
       esError: true,
     }
   }
