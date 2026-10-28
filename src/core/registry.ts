@@ -15,6 +15,9 @@ export interface EntradaHerramienta {
   proponerPatron?:
     | ((argumentos: Record<string, unknown>, recurso: string) => string)
     | undefined
+  motivoAprobacionObligatoria?:
+    | ((argumentos: Record<string, unknown>) => string | undefined)
+    | undefined
   admiteParalelo?: boolean | undefined
   ejecutar: (
     argumentos: Record<string, unknown>,

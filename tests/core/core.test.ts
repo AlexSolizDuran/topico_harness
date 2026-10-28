@@ -276,6 +276,7 @@ describe('core Specification Tests', () => {
           accion: 'read',
           recurso: 'a.ts',
           patronSugerido: 'a.ts',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => 'una_vez',
       }
@@ -315,6 +316,7 @@ describe('core Specification Tests', () => {
           accion: 'edit',
           recurso: '.env',
           patronSugerido: '.env',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => 'una_vez',
       }
@@ -356,6 +358,7 @@ describe('core Specification Tests', () => {
           accion: 'edit',
           recurso: 'src/a.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => {
           aprobacionConsultada = true
@@ -521,6 +524,7 @@ describe('core Specification Tests', () => {
             accion: 'read',
             recurso,
             patronSugerido: recurso,
+            obligatoria: false,
           }
         },
         solicitarAprobacion: async (sol) => {
@@ -1115,6 +1119,7 @@ describe('core Specification Tests', () => {
           accion: 'edit',
           recurso: 'src/a.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => {
           controller.abort()
@@ -1169,6 +1174,7 @@ describe('core Specification Tests', () => {
           accion: 'edit',
           recurso: 'src/a.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => 'denegar',
       }
@@ -1220,6 +1226,7 @@ describe('core Specification Tests', () => {
           accion: 'edit',
           recurso: 'src/a.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         }),
         solicitarAprobacion: async () => 'una_vez',
       }

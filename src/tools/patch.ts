@@ -3,7 +3,7 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { EntradaHerramienta } from '../core/registry.js'
 import { detectarEol, normalizarEol, restaurarEol } from './eol.js'
-import { resolverRutaSegura } from './path.js'
+import { motivoAprobacionRuta, resolverRuta } from './path.js'
 import { MAXIMO_CONTENIDO_POR_DEFECTO, truncarContenido } from './truncate.js'
 
 export class ErrorParche extends Error {
@@ -354,7 +354,7 @@ function construirPlan(
   const plan: ArchivoPlanificado[] = []
 
   for (const bloque of bloques) {
-    const rutaAbsoluta = resolverRutaSegura(bloque.ruta, directorioProyecto)
+    const rutaAbsoluta = resolverRuta(bloque.ruta, directorioProyecto)
     if (vistos.has(rutaAbsoluta)) {
       throw new ErrorParche(
         `La ruta '${bloque.ruta}' aparece más de una vez en el parche.`,
@@ -517,6 +517,13 @@ export function crearHerramientaParche(
     obtenerRecurso: (args) => {
       const rutas = rutasDelParche(String(args.patch ?? ''))
       return rutas.length > 0 ? rutas : '*'
+    },
+    motivoAprobacionObligatoria: (args) => {
+      for (const ruta of rutasDelParche(String(args.patch ?? ''))) {
+        const motivo = motivoAprobacionRuta(ruta, directorioProyecto)
+        if (motivo) return motivo
+      }
+      return undefined
     },
     admiteParalelo: false,
     ejecutar: async (args) => {

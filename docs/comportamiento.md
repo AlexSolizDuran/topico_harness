@@ -224,10 +224,11 @@ argumentos) y `fin` (razón `completado`/`interrumpido`, tokens).
 Catálogo por plataforma (`tools/catalog.ts:64`).
 
 - Las tools de archivo (`read`, `write`, `edit`, `apply_patch`) resuelven cada
-  ruta con `resolverRutaSegura`; `glob`, `grep` y `shell` trabajan directamente
-  sobre el directorio del proyecto.
-- `resolverRutaSegura` rechaza rutas fuera del proyecto, `.harness` y `.env*`
-  (excepto `.env.example`).
+  ruta con `resolverRuta`; `glob`, `grep` y `shell` trabajan directamente sobre el
+  directorio del proyecto.
+- Ninguna ruta se rechaza: una ruta fuera del proyecto o dentro de `.harness`/`.env*`
+  pide aprobación obligatoria (excepto `.env.example`). La decisión vive en el
+  portero, no en la tool.
 - `glob` y `grep` ignoran `node_modules`, `.git`, `.vitest`, `coverage`, `dist`,
   `.harness` y archivos de entorno.
 - Las tools que devuelven contenido (`read`, `grep`, `shell`, `apply_patch`)
@@ -241,36 +242,44 @@ Catálogo por plataforma (`tools/catalog.ts:64`).
 | `apply_patch` | `edit` | no | parche multiarchivo `*** Begin/End Patch` con bloques Add/Update/Delete; valida todo antes de escribir |
 | `glob` | `glob` | sí | patrón → regex, solo archivos, devuelve JSON ordenado; patrones con `..` devuelven `[]` |
 | `grep` | `grep` | sí | búsqueda literal; devuelve `ruta:línea: texto`; omite archivos ilegibles |
-| `shell` | `shell` / `shell_compuesto` | no | una invocación simple, o una línea compuesta que pide aprobación |
+| `shell` | `shell` / `shell_compuesto` / `shell_redireccion` | no | ejecuta una invocación simple; lo riesgoso pide aprobación obligatoria |
 | `task` | `subagent` | no | delega a un subagente (sección 7) |
 | `task_status` | `read` | sí | estado de una tarea background o listado completo |
 | `task_cancel` | `subagent` | no | cancela una tarea en curso |
 
 ### 5.1 `shell` (`tools/shell.ts`)
 
-- En Unix divide la línea en segmentos (`;`, `&&`, `||`, `|`) respetando comillas y
-  escapes y valida cada uno contra catálogo y lista negra: un segmento prohibido
-  bloquea la línea completa.
+- `analizarLinea` recorre la línea una sola vez, respetando comillas y escapes, y
+  separa segmentos, redirecciones y composición.
+- En Unix una línea compuesta (`;`, `&&`, `||`, `|`) se evalúa con
+  `shell_compuesto`; un segmento de la lista negra pide aprobación obligatoria para
+  la línea completa.
 - Un intérprete con bandera de código (`bash -c`, `node -e`, `python3 -c`) cuenta
-  como compuesto; `$()` y backticks se rechazan siempre.
-- `resolverAccion` decide por llamada: `shell` si es simple, `shell_compuesto` si
-  compone.
-- Acepta `directorio`, resuelto con `resolverRutaSegura` y verificado como
-  directorio existente.
+  como compuesto y pide aprobación obligatoria; `$()` y backticks también.
+- `resolverAccion` decide por llamada: `shell_compuesto` si compone, si no
+  `shell_redireccion` si redirige a un archivo, si no `shell`.
+- Acepta `directorio`, resuelto con `resolverRuta` y verificado como directorio
+  existente; fuera del proyecto o dentro de `.harness` pide aprobación obligatoria.
 - Extrae el binario (soporta comillas, rutas y `.exe`) y lo compara en minúsculas.
 - Unix: lista negra explícita (`rm`, `chmod`, `sudo`, `kill`, `mount`, etc.) **y**
-  catálogo permitido (`git`, `npm`, `node`, `cargo`, `python`, `ls`, `grep`, …).
-- Windows: solo catálogo permitido, sin lista negra, ejecutado con PowerShell
-  (`-NoProfile -NonInteractive -Command`); rechaza la composición.
+  catálogo conocido (`git`, `npm`, `node`, `cargo`, `python`, `ls`, `grep`, …). Un
+  comando fuera del catálogo pide aprobación obligatoria, no se rechaza.
+- Windows: catálogo permitido, ejecutado con PowerShell
+  (`-NoProfile -NonInteractive -Command`); la composición pide aprobación
+  obligatoria.
+- `2>&1`, `n>&m`, `n>&-` y la redirección a `/dev/null` siguen siendo una
+  invocación simple. Un heredoc, herestring o sustitución de proceso pide
+  aprobación obligatoria sin validar el contenido.
 - Unix usa `exec` con `maxBuffer` de 10 MB; código de salida distinto de 0 se
   informa con la salida.
 
-### 5.2 Encadenamiento de rutas (`tools/path.ts`)
+### 5.2 Rutas (`tools/path.ts`)
 
-`resolverRutaSegura` resuelve la ruta, verifica que quede dentro del proyecto,
-rechaza rutas sensibles y repite la verificación sobre el `realpath` para que un
-symlink no escape del proyecto. Una ruta nueva resuelve el ancestro existente más
-cercano.
+`resolverRuta` resuelve la ruta sin restricciones. `evaluarRiesgoRuta` clasifica
+`fueraDelProyecto` y `sensible`, siguiendo el `realpath` para que un symlink no
+escape; una ruta nueva resuelve el ancestro existente más cercano.
+`motivoAprobacionRuta` convierte ese riesgo en el motivo que la tool declara al
+portero.
 
 ---
 
@@ -422,26 +431,33 @@ Reglas ordenadas `{accion, recurso, efecto}` con efecto `permitir`, `consultar` 
 es `consultar`.
 
 - Acciones canónicas: `read`, `glob`, `grep`, `edit`, `shell`, `shell_compuesto`,
-  `subagent`, `external_directory`; se aceptan alias en español e inglés (`leer`,
-  `editar`, `ejecutar`, `comando_compuesto`, etc.). Acción desconocida → `read`.
+  `shell_redireccion`, `subagent`, `external_directory`; se aceptan alias en
+  español e inglés (`leer`, `editar`, `ejecutar`, `comando_compuesto`,
+  `redireccion`, etc.). Acción desconocida → `read`.
 - Patrones: `*` cubre cualquier secuencia (incluida `/`), `?` un carácter; un
   patrón terminado en ` *` también acepta el valor sin argumentos.
 - Composición de reglas, en este orden: base, archivo de proyecto
   (`.harness/config.json` y `.harness/permissions.json`), reglas inyectadas y
   reglas del agente (las últimas en evaluarse).
 - Base: todo permitido; `.env` y `.env.*` en lectura pasan a `consultar`;
-  `.env.example` permitido; todo `shell_compuesto` pasa a `consultar`.
+  `.env.example` permitido; todo `shell_compuesto` y `shell_redireccion` pasa a
+  `consultar`.
+- **Aprobación obligatoria**: una tool declara un motivo con
+  `motivoAprobacionObligatoria(args)`. Si lo declara, el efecto es `consultar` con
+  `obligatoria: true` aunque una regla `permitir` o una aprobación guardada
+  coincidan. Una regla `denegar` configurada gana y deniega sin preguntar.
 - Rutas fuera del proyecto se evalúan como `external_directory`; un `denegar`
   corta, un `consultar` exige aprobación.
 - Aprobaciones guardadas (`.harness/approvals.json`) convierten `consultar` en
-  `permitir`.
+  `permitir`, salvo que la aprobación sea obligatoria.
 - Operación con varios recursos: cualquier `denegar` deniega todo; si no, el
   primer `consultar` decide el recurso reportado.
 - `solicitarAprobacion` sin TTY o sin manejador → `denegar`. Con manejador:
-  `siempre` persiste una regla con el patrón sugerido; `denegar` rechaza además
-  todas las aprobaciones pendientes.
-- Patrón sugerido: para `shell` y `shell_compuesto`, los dos primeros tokens +
-  ` *`; para rutas, la ruta normalizada.
+  `siempre` persiste una regla con el patrón sugerido; en una aprobación
+  obligatoria `siempre` se normaliza a `una_vez` y no persiste nada; `denegar`
+  rechaza además todas las aprobaciones pendientes.
+- Patrón sugerido: para `shell`, `shell_compuesto` y `shell_redireccion`, los dos
+  primeros tokens + ` *`; para rutas, la ruta normalizada.
 - El portero se evalúa en dos puntos: la tanda completa antes de ejecutar y el
   despacho individual (que puede omitir el gate si la tanda ya lo hizo).
 

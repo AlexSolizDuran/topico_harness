@@ -88,6 +88,10 @@ para que una futura UI web no rompa el patrón.
 La última depende de la decisión abierta 2. Si se decide "sin gate", se
 implementa solo la lista negra.
 
+**Revisado (`250-aprobacion-obligatoria`):** la lista negra no bloquea; eleva la
+operación a aprobación obligatoria junto con el catálogo, las redirecciones y las
+rutas sensibles.
+
 ### `040-subagentes` — El aislamiento
 
 | Requisito | Del nivel |

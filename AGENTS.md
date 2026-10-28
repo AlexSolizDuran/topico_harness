@@ -11,8 +11,8 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-La implementación está completa: los 23 changes de `openspec/changes/archive/` están
-implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 369
+La implementación está completa: los 25 changes de `openspec/changes/archive/` están
+implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 406
 tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
 con herramientas reales.
 
@@ -21,22 +21,22 @@ con herramientas reales.
 | | |
 |---|---|
 | Capacidades | 9 |
-| Requisitos | 109 |
-| Escenarios | 317 |
-| Implementación | 23 changes, `npm run check` en verde (369 tests) |
+| Requisitos | 113 |
+| Escenarios | 356 |
+| Implementación | 25 changes, `npm run check` en verde (406 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
 |---|---|---|---|
 | `core` | 12 | 41 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación, espera de aprobación, tandas paralelas, detección de bucles |
 | `provider` | 7 | 24 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial, conteo de tokens, cambio de modelo entre turnos |
-| `tools` | 18 | 54 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas |
+| `tools` | 21 | 79 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo con aprobación obligatoria de lo riesgoso, redirecciones, archivos sensibles, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas |
 | `context` | 10 | 28 | presupuesto, conteo, recorte, compactación, validación entre pasos, presupuesto independiente por subagente y las tres reglas que no se rompen |
-| `interface` | 22 | 65 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`) y búsqueda (`/sesiones buscar`) |
+| `interface` | 22 | 67 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`) y búsqueda (`/sesiones buscar`) |
 | `sesiones` | 11 | 24 | guardado incremental por turno, reanudación con historial y configuración, listado, credencial redactada, compactación como reemplazo, límite por proyecto, ramas desde un turno anterior y búsqueda por texto |
 | `agents` | 6 | 20 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio y defaults |
 | `subagents` | 15 | 37 | delegación con contexto aislado, profundidad máxima 1, intersección de solo lectura, cancelación unidireccional, presupuesto/pasos/modelo propios y tareas en background con continuación del turno |
-| `permissions` | 8 | 24 | reglas ordenadas (`permitir`, `consultar`, `denegar`), política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
+| `permissions` | 9 | 36 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
 
 `openspec/specs/<capacidad>/spec.md` es la fuente de verdad. La estructura de cada
 spec es fija: `## Purpose`, luego `## Requirements`, y dentro `### Requirement:`
@@ -181,7 +181,7 @@ core/ NO importa interface/.
 | `src/types.ts` | `Mensaje`, `Evento`, `EstadoTurno`, `PorteroPermisos` | cruza varias capacidades |
 | `src/core/` | el bucle, el historial, el despacho, las tandas, los loops, la cancelación | `core` |
 | `src/provider/` | la interfaz del provider y su adaptador | `provider` |
-| `src/tools/` | las herramientas, el catálogo y la lista negra | `tools` |
+| `src/tools/` | las herramientas, el catálogo y la lista negra como etiquetas de riesgo | `tools` |
 | `src/context/` | presupuesto, recorte y compactación | `context` |
 | `src/interface/` | la interfaz de terminal | `interface` |
 | `src/agents/` | perfiles declarativos de agente, carga y defaults | `agents` |
@@ -233,7 +233,7 @@ Además:
 `tests/core/` los cubre todos. El nombre del test es el nombre del escenario,
 literal. Cuando agregás un requisito, agregás su escenario y su test.
 
-Es la única regla que ata código a spec. Con 109 requisitos y 317 escenarios, es la
+Es la única regla que ata código a spec. Con 113 requisitos y 356 escenarios, es la
 que justifica el resto.
 
 **2. La dirección de dependencia se verifica con un test, no con una promesa.** Un
@@ -244,7 +244,7 @@ test lee los archivos de `src/core/` y falla si encuentra un import de
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy pasa con 369 tests.
+typecheck y tests. Hoy pasa con 406 tests.
 
 ## Stack
 
@@ -306,15 +306,19 @@ No contradigas los specs. En resumen:
    red que multiplica el debugging.
 2. **TypeScript + Ink 7.** Node 24, ESM, strict.
 3. **Plataformas: las tres.** Linux, macOS y Windows. La ejecución de comandos
-   usa un catálogo por plataforma: Unix con `exec` y lista negra; Windows con
-   PowerShell y allowlist. Ninguna plataforma acepta comandos compuestos. Falta
-   verificar el camino de Windows en CI: el desarrollo y la prueba real fueron en
-   Linux.
+   usa un catálogo por plataforma: Unix con `exec`; Windows con PowerShell. El
+   catálogo y la lista negra son etiquetas de riesgo, no un muro: un comando fuera
+   del catálogo, de la lista negra o una línea compuesta en Windows pide aprobación
+   obligatoria. Falta verificar el camino de Windows en CI: el desarrollo y la
+   prueba real fueron en Linux.
 4. **El provider va detrás de una interfaz propia.** El SDK vive solo en el
    adaptador. Agregar un provider después no toca el loop.
-5. **Lista negra por nombre completo, nunca por combinación de flags.** `rm -rf`
-   es evadible con `rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`.
-   Verificado en GNU coreutils 9.7.
+5. **Nada se rechaza: lo riesgoso pide aprobación obligatoria.** La lista negra se
+   evalúa por nombre completo, nunca por combinación de flags: `rm -rf` es evadible
+   con `rm -fr`, `rm -r -f`, `rm -f -r` o `rm --recursive --force`. Verificado en
+   GNU coreutils 9.7. Una regla `denegar` configurada sigue siendo la última
+   palabra; ninguna regla `permitir` ni aprobación guardada salta la aprobación
+   obligatoria.
 6. **Sin base de datos en ningún nivel.** El estado vive en memoria durante el
    turno y la persistencia de sesiones es JSONL en `.harness/sesiones/`. Nada de
    SQLite.
@@ -345,7 +349,7 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
 |---|---|
 | `alcance/` | Por qué el harness se construye por niveles. 12 documentos de referencia. El razonamiento, no el contrato |
 | `openspec/config.yaml` | Contexto que OpenSpec inyecta: stack, reglas, flujo, estado |
-| `openspec/specs/` | El contrato: 9 capacidades, 109 requisitos, 317 escenarios |
+| `openspec/specs/` | El contrato: 9 capacidades, 113 requisitos, 356 escenarios |
 | `PREGUNTAS.md` | Las decisiones ya resueltas y las que se postergaron |
 | `src/` | La implementación, una carpeta por capacidad. La arquitectura está en la sección de arriba |
 | `tests/` | Un test por escenario, agrupado por capacidad |

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { EntradaHerramienta } from '../core/registry.js'
-import { resolverRutaSegura } from './path.js'
+import { motivoAprobacionRuta, resolverRuta } from './path.js'
 
 export function crearHerramientaEscritura(
   directorioProyecto: string = process.cwd(),
@@ -26,11 +26,13 @@ export function crearHerramientaEscritura(
     },
     accionPermiso: 'edit',
     obtenerRecurso: (args) => String(args.ruta ?? ''),
+    motivoAprobacionObligatoria: (args) =>
+      motivoAprobacionRuta(String(args.ruta ?? ''), directorioProyecto),
     admiteParalelo: false,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
       const contenido = String(args.contenido ?? '')
-      const rutaAbsoluta = resolverRutaSegura(ruta, directorioProyecto)
+      const rutaAbsoluta = resolverRuta(ruta, directorioProyecto)
 
       // Crear directorios padres si no existen
       await mkdir(dirname(rutaAbsoluta), { recursive: true })

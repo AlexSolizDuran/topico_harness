@@ -89,6 +89,10 @@ Cuatro niveles, de barato a caro:
 La lista negra **siempre** se puede saltear. `bash` puede hacer 500 cosas
 distintas; tu regex cubre 20. Un modelo con un error raro te la va a saltear.
 
+Por eso la v1 no la usa como muro: la lista negra y el catálogo elevan la
+operación a una aprobación obligatoria (`250-aprobacion-obligatoria`). La persona
+decide con el motivo a la vista.
+
 Un sandbox de kernel dice: "puede correr comandos, pero solo puede escribir
 dentro de `/home/usuario/proyecto`". Eso no depende de adivinar qué comando
 viene.

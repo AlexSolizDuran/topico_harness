@@ -111,6 +111,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
           accion: 'edit',
           recurso: 'src/a.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         },
       })
 
@@ -315,6 +316,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
             accion: 'edit',
             recurso: 'src/nuevo.ts',
             patronSugerido: 'src/**',
+            obligatoria: false,
           }}
         />,
       )
@@ -325,6 +327,50 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
       expect(salida).toContain('Aprobar una vez')
       expect(salida).toContain('Aprobar siempre')
       expect(salida).toContain('Denegar')
+    })
+
+    it('Una aprobación normal ofrece tres opciones', () => {
+      // WHEN la aprobación no es obligatoria
+      const salida = renderToString(
+        <PanelAprobacion
+          solicitud={{
+            id: 'call_1',
+            herramienta: 'write',
+            accion: 'edit',
+            recurso: 'src/nuevo.ts',
+            patronSugerido: 'src/**',
+            obligatoria: false,
+          }}
+        />,
+      )
+
+      // THEN la interfaz ofrece aprobar una vez, aprobar siempre y denegar
+      expect(salida).toContain('Aprobar una vez')
+      expect(salida).toContain('Aprobar siempre')
+      expect(salida).toContain('Denegar')
+    })
+
+    it('Una aprobación obligatoria ofrece dos opciones', () => {
+      // WHEN la aprobación es obligatoria
+      const salida = renderToString(
+        <PanelAprobacion
+          solicitud={{
+            id: 'call_1',
+            herramienta: 'shell',
+            accion: 'shell',
+            recurso: 'rm -rf /',
+            patronSugerido: 'rm *',
+            obligatoria: true,
+            motivo: 'El comando rm pertenece a la lista negra.',
+          }}
+        />,
+      )
+
+      // THEN la interfaz muestra el motivo y solo ofrece aprobar una vez o denegar
+      expect(salida).toContain('lista negra')
+      expect(salida).toContain('Aprobar una vez')
+      expect(salida).toContain('Denegar')
+      expect(salida).not.toContain('Aprobar siempre')
     })
 
     it('Aprobar una vez ejecuta solo esa solicitud', async () => {
@@ -356,6 +402,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
         accion: 'edit',
         recurso: 'src/uno.ts',
         patronSugerido: 'src/**',
+        obligatoria: false,
       })
 
       sesion.responderAprobacion('una_vez')
@@ -401,6 +448,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
           accion: 'edit',
           recurso: 'src/modulo.ts',
           patronSugerido: 'src/**',
+          obligatoria: false,
         })
 
         sesion.responderAprobacion('siempre')
@@ -433,6 +481,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
         accion: 'edit',
         recurso: 'src/peligro.ts',
         patronSugerido: 'src/**',
+        obligatoria: false,
       })
 
       sesion.responderAprobacion('denegar')
@@ -460,6 +509,7 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
         accion: 'edit',
         recurso: 'src/archivo.ts',
         patronSugerido: 'src/**',
+        obligatoria: false,
       })
 
       // THEN la interfaz no espera entrada y devuelve el rechazo

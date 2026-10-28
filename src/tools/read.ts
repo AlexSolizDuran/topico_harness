@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { EntradaHerramienta } from '../core/registry.js'
-import { resolverRutaSegura } from './path.js'
+import { motivoAprobacionRuta, resolverRuta } from './path.js'
 import { truncarContenido } from './truncate.js'
 
 export function crearHerramientaLectura(
@@ -31,10 +31,12 @@ export function crearHerramientaLectura(
     },
     accionPermiso: 'read',
     obtenerRecurso: (args) => String(args.ruta ?? ''),
+    motivoAprobacionObligatoria: (args) =>
+      motivoAprobacionRuta(String(args.ruta ?? ''), directorioProyecto),
     admiteParalelo: true,
     ejecutar: async (args) => {
       const ruta = String(args.ruta ?? '')
-      const rutaAbsoluta = resolverRutaSegura(ruta, directorioProyecto)
+      const rutaAbsoluta = resolverRuta(ruta, directorioProyecto)
 
       const contenidoCompleto = await readFile(rutaAbsoluta, 'utf-8')
 

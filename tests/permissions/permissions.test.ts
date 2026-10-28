@@ -208,6 +208,26 @@ describe('permissions Specification Tests', () => {
         gestor.evaluar(shellTool, { comando: 'git status && npm test' }).efecto,
       ).toBe('consultar')
     })
+
+    it('Ejecutar con redirección es una acción propia', () => {
+      const catalogo = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+      const shellTool = catalogo.obtener('shell')
+      if (!shellTool) throw new Error('herramienta no encontrada')
+
+      const gestor = new GestorPermisos({
+        incluirBase: false,
+        reglasGlobales: [{ accion: 'shell', recurso: '*', efecto: 'permitir' }],
+      })
+
+      expect(gestor.evaluar(shellTool, { comando: 'git status' }).efecto).toBe(
+        'permitir',
+      )
+      const redirigido = gestor.evaluar(shellTool, {
+        comando: 'git status > salida.txt',
+      })
+      expect(redirigido.accion).toBe('shell_redireccion')
+      expect(redirigido.efecto).toBe('consultar')
+    })
   })
 
   // --------------------------------------------------------------------------
@@ -283,6 +303,21 @@ describe('permissions Specification Tests', () => {
       expect(ev.accion).toBe('shell_compuesto')
       expect(ev.efecto).toBe('consultar')
       expect(ev.recurso).toBe('git status && npm test')
+    })
+
+    it('Una redirección consulta aunque la base permita ejecutar', () => {
+      const catalogo = crearCatalogoPorDefecto({ directorioProyecto: tempDir })
+      const shellTool = catalogo.obtener('shell')
+      if (!shellTool) throw new Error('herramienta no encontrada')
+
+      const gestor = new GestorPermisos({})
+      const ev = gestor.evaluar(shellTool, {
+        comando: 'git status > salida.txt',
+      })
+
+      expect(ev.accion).toBe('shell_redireccion')
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.recurso).toBe('git status > salida.txt')
     })
 
     it('Un comando simple no consulta', () => {
@@ -503,9 +538,9 @@ describe('permissions Specification Tests', () => {
   })
 
   // --------------------------------------------------------------------------
-  // Requirement: Una aprobación espera la decisión y ofrece tres salidas
+  // Requirement: Una aprobación espera la decisión y ofrece las salidas que corresponden
   // --------------------------------------------------------------------------
-  describe('Requirement: Una aprobación espera la decisión y ofrece tres salidas', () => {
+  describe('Requirement: Una aprobación espera la decisión y ofrece las salidas que corresponden', () => {
     it('Aprobar una vez ejecuta solo esa solicitud', async () => {
       let consultas = 0
       const gestor = new GestorPermisos({
@@ -650,6 +685,7 @@ describe('permissions Specification Tests', () => {
         accion: 'read',
         recurso: 'a.env',
         patronSugerido: 'a.env',
+        obligatoria: false,
       })
       const p2 = gestor.solicitarAprobacion({
         id: '2',
@@ -657,6 +693,7 @@ describe('permissions Specification Tests', () => {
         accion: 'read',
         recurso: 'b.env',
         patronSugerido: 'b.env',
+        obligatoria: false,
       })
 
       resoluciones[0]?.('denegar')
@@ -664,6 +701,190 @@ describe('permissions Specification Tests', () => {
       const [r1, r2] = await Promise.all([p1, p2])
       expect(r1).toBe('denegar')
       expect(r2).toBe('denegar')
+    })
+
+    it('Una aprobación obligatoria no ofrece aprobar siempre', () => {
+      const gestor = new GestorPermisos({})
+      const ev = gestor.evaluar(
+        {
+          nombre: 'shell',
+          accionPermiso: 'shell',
+          obtenerRecurso: () => 'rm archivo.txt',
+          motivoAprobacionObligatoria: () => 'lista negra',
+        },
+        { comando: 'rm archivo.txt' },
+      )
+
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.obligatoria).toBe(true)
+      expect(ev.motivo).toBe('lista negra')
+    })
+
+    it('Aprobar siempre en una obligatoria no guarda una regla', async () => {
+      const dir = mkdtempSync(join(tempDir, 'obligatoria-siempre-'))
+      let consultas = 0
+      const gestor = new GestorPermisos({
+        directorioProyecto: dir,
+        manejadorAprobacion: async () => {
+          consultas++
+          return 'siempre'
+        },
+      })
+
+      const registro = new RegistroHerramientas()
+      let ejecuciones = 0
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {
+          type: 'object',
+          properties: { ruta: { type: 'string' } },
+          required: ['ruta'],
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? ''),
+        motivoAprobacionObligatoria: () => 'archivo protegido',
+        ejecutar: async () => {
+          ejecuciones++
+          return 'ok'
+        },
+      })
+
+      await despacharHerramienta('read', { ruta: '.env' }, registro, {
+        portero: gestor,
+      })
+      await despacharHerramienta('read', { ruta: '.env' }, registro, {
+        portero: gestor,
+      })
+
+      expect(ejecuciones).toBe(2)
+      expect(consultas).toBe(2)
+      expect(gestor.obtenerAprobacionesGuardadas()).toHaveLength(0)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: Hay operaciones que siempre piden aprobación
+  // --------------------------------------------------------------------------
+  describe('Requirement: Hay operaciones que siempre piden aprobación', () => {
+    const herramientaRiesgosa = {
+      nombre: 'shell',
+      accionPermiso: 'shell' as const,
+      obtenerRecurso: (args: Record<string, unknown>) =>
+        String(args.comando ?? ''),
+      motivoAprobacionObligatoria: () =>
+        'El comando pertenece a la lista negra.',
+    }
+
+    it('Una regla permitir no salta la aprobación', () => {
+      const gestor = new GestorPermisos({
+        reglasGlobales: [{ accion: 'shell', recurso: '*', efecto: 'permitir' }],
+      })
+
+      const ev = gestor.evaluar(herramientaRiesgosa, {
+        comando: 'rm archivo.txt',
+      })
+
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.obligatoria).toBe(true)
+    })
+
+    it('Una aprobación guardada no salta la aprobación', () => {
+      const gestor = new GestorPermisos({
+        aprobacionesIniciales: [
+          { accion: 'shell', recurso: '*', efecto: 'permitir' },
+        ],
+      })
+
+      const ev = gestor.evaluar(herramientaRiesgosa, {
+        comando: 'rm archivo.txt',
+      })
+
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.obligatoria).toBe(true)
+    })
+
+    it('Una regla denegar impide sin preguntar', async () => {
+      const gestor = new GestorPermisos({
+        reglasGlobales: [
+          { accion: 'read', recurso: '.env', efecto: 'denegar' },
+        ],
+        manejadorAprobacion: async () => {
+          throw new Error('no debería preguntar')
+        },
+      })
+
+      const registro = new RegistroHerramientas()
+      let ejecutado = false
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {
+          type: 'object',
+          properties: { ruta: { type: 'string' } },
+          required: ['ruta'],
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? ''),
+        motivoAprobacionObligatoria: () => 'archivo protegido',
+        ejecutar: async () => {
+          ejecutado = true
+          return 'secreto'
+        },
+      })
+
+      const res = await despacharHerramienta(
+        'read',
+        { ruta: '.env' },
+        registro,
+        { portero: gestor },
+      )
+
+      expect(ejecutado).toBe(false)
+      expect(res.esError).toBe(true)
+      expect(res.resultado).toContain('Permiso denegado')
+    })
+
+    it('El motivo se muestra', () => {
+      const gestor = new GestorPermisos({})
+      const ev = gestor.evaluar(herramientaRiesgosa, {
+        comando: 'rm archivo.txt',
+      })
+
+      expect(ev.motivo).toBe('El comando pertenece a la lista negra.')
+    })
+
+    it('Sin terminal no se ejecuta lo obligatorio', async () => {
+      let ejecutado = false
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {
+          type: 'object',
+          properties: { ruta: { type: 'string' } },
+          required: ['ruta'],
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? ''),
+        motivoAprobacionObligatoria: () => 'archivo protegido',
+        ejecutar: async () => {
+          ejecutado = true
+          return 'secreto'
+        },
+      })
+
+      const gestor = new GestorPermisos({ esInteractivo: false })
+      const res = await despacharHerramienta(
+        'read',
+        { ruta: '.env' },
+        registro,
+        { portero: gestor },
+      )
+
+      expect(ejecutado).toBe(false)
+      expect(res.esError).toBe(true)
+      expect(res.resultado).toContain('archivo protegido')
     })
   })
 

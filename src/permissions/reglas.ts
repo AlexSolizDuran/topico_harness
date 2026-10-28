@@ -9,6 +9,7 @@ import type {
 export const REGLAS_BASE: readonly ReglaPermiso[] = [
   { accion: '*', recurso: '*', efecto: 'permitir' },
   { accion: 'shell_compuesto', recurso: '*', efecto: 'consultar' },
+  { accion: 'shell_redireccion', recurso: '*', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env.*', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env.example', efecto: 'permitir' },
@@ -35,6 +36,10 @@ const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
   shell_compuesto: 'shell_compuesto',
   comando_compuesto: 'shell_compuesto',
   'comando compuesto': 'shell_compuesto',
+  shell_redireccion: 'shell_redireccion',
+  redireccion: 'shell_redireccion',
+  redirección: 'shell_redireccion',
+  comando_redirigido: 'shell_redireccion',
   subagent: 'subagent',
   delegar: 'subagent',
   task: 'subagent',

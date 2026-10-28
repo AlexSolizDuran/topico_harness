@@ -536,10 +536,25 @@ export const PanelAprobacion: React.FC<{
       Acción: <Text bold>{solicitud.accion}</Text> · Recurso:{' '}
       <Text bold>{solicitud.recurso}</Text>
     </Text>
-    <Text color="gray">Patrón sugerido: {solicitud.patronSugerido}</Text>
-    <Text>
-      [1 / y] Aprobar una vez · [2 / a] Aprobar siempre · [3 / n / Esc] Denegar
-    </Text>
+    {solicitud.motivo ? (
+      <Text color="red">Motivo: {solicitud.motivo}</Text>
+    ) : null}
+    {solicitud.obligatoria ? (
+      <>
+        <Text color="gray">
+          Esta operación siempre requiere aprobación; no se puede guardar.
+        </Text>
+        <Text>[1 / y] Aprobar una vez · [3 / n / Esc] Denegar</Text>
+      </>
+    ) : (
+      <>
+        <Text color="gray">Patrón sugerido: {solicitud.patronSugerido}</Text>
+        <Text>
+          [1 / y] Aprobar una vez · [2 / a] Aprobar siempre · [3 / n / Esc]
+          Denegar
+        </Text>
+      </>
+    )}
   </Box>
 )
 

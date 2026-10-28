@@ -129,17 +129,20 @@ describe('tools Specification Tests — apply_patch', () => {
       )
     })
 
-    it('Una ruta fuera del proyecto se rechaza', async () => {
+    it('Un parche fuera del proyecto pide aprobación', async () => {
       // WHEN un bloque apunta fuera del directorio del proyecto
       const herramienta = crearHerramientaParche(tempDir)
+      const texto = parche('*** Add File: ../fuera.txt', '+contenido')
 
-      // THEN el parche completo se rechaza y ningún archivo se modifica
-      await expect(
-        herramienta.ejecutar({
-          patch: parche('*** Add File: ../fuera.txt', '+contenido'),
-        }),
-      ).rejects.toThrow(/fuera del proyecto/)
-      expect(existsSync(join(tempDir, '..', 'fuera.txt'))).toBe(false)
+      // THEN el sistema pide aprobación obligatoria y nombra la ruta
+      expect(
+        herramienta.motivoAprobacionObligatoria?.({ patch: texto }),
+      ).toContain('fuera del proyecto')
+
+      // La ejecución ya no rechaza: el portero decide antes.
+      await herramienta.ejecutar({ patch: texto })
+      expect(existsSync(join(tempDir, '..', 'fuera.txt'))).toBe(true)
+      rmSync(join(tempDir, '..', 'fuera.txt'), { force: true })
     })
 
     it('Agregar un archivo que ya existe falla', async () => {

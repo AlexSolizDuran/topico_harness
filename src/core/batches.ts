@@ -85,7 +85,7 @@ async function* resolverPermisosDeTanda(
 
     if (!portero.solicitarAprobacion) {
       item.rechazoPrevio = {
-        resultado: `ERROR: Se requiere aprobación interactiva para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}', pero no hay cliente interactivo.\nLa operación no se completó.`,
+        resultado: `ERROR: Se requiere aprobación interactiva para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}', pero no hay cliente interactivo.${evaluacion.motivo ? ` Motivo: ${evaluacion.motivo}.` : ''}\nLa operación no se completó.`,
         esError: true,
       }
       continue
@@ -97,6 +97,8 @@ async function* resolverPermisosDeTanda(
       accion: evaluacion.accion,
       recurso: evaluacion.recurso,
       patronSugerido: evaluacion.patronSugerido,
+      obligatoria: evaluacion.obligatoria,
+      motivo: evaluacion.motivo,
     }
 
     yield { tipo: 'espera_aprobacion', solicitud }
@@ -115,8 +117,9 @@ async function* resolverPermisosDeTanda(
     }
 
     if (decision === 'denegar') {
+      const motivo = evaluacion.motivo ? ` Motivo: ${evaluacion.motivo}.` : ''
       item.rechazoPrevio = {
-        resultado: `ERROR: Aprobación denegada para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.\nLa operación no se completó.`,
+        resultado: `ERROR: Aprobación denegada para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.${motivo}\nLa operación no se completó.`,
         esError: true,
       }
     }
