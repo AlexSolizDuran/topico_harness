@@ -20,6 +20,7 @@ export interface MetricasContexto {
   mensajes: number
   tokensAcumulados: number
   ultimaCompactacion?: ResumenCompactacion | undefined
+  tokensSistema?: number | undefined
 }
 
 export function crearMetricasVacias(): MetricasContexto {
@@ -42,27 +43,29 @@ export function medirContexto(
   ultimoTokens?: ConteoTokens | undefined,
   tokensAcumulados = 0,
   ultimaCompactacion?: ResumenCompactacion | undefined,
+  tokensSistema = 0,
 ): MetricasContexto {
   const medicion = calcularTokensHistorial(mensajes, ultimoTokens)
-  const disponible = Math.max(
-    0,
-    presupuesto.limitePresupuesto - medicion.tokens,
-  )
+  const tokensActuales = medicion.esEstimado
+    ? medicion.tokens + tokensSistema
+    : medicion.tokens
+  const disponible = Math.max(0, presupuesto.limitePresupuesto - tokensActuales)
   const porcentajeUso =
     presupuesto.limitePresupuesto > 0
-      ? (medicion.tokens / presupuesto.limitePresupuesto) * 100
+      ? (tokensActuales / presupuesto.limitePresupuesto) * 100
       : 0
 
   return {
     ventanaContexto: presupuesto.ventanaContexto,
     limitePresupuesto: presupuesto.limitePresupuesto,
     margenReservado: presupuesto.margenConservado,
-    tokensActuales: medicion.tokens,
+    tokensActuales,
     esEstimado: medicion.esEstimado,
     disponible,
     porcentajeUso,
     mensajes: mensajes.length,
     tokensAcumulados,
     ultimaCompactacion,
+    ...(tokensSistema > 0 ? { tokensSistema } : {}),
   }
 }

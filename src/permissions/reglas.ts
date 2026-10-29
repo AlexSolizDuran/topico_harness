@@ -46,6 +46,7 @@ const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
   external_directory: 'external_directory',
   directorio_externo: 'external_directory',
   'directorio externo': 'external_directory',
+  skill: 'skill',
 }
 
 export function normalizarAccionPermiso(

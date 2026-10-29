@@ -43,6 +43,12 @@ export const COMANDOS: readonly ComandoUi[] = [
     alias: ['branch'],
   },
   {
+    id: 'skills',
+    etiqueta: '/skills',
+    descripcion: 'Ver catálogo de skills disponibles',
+    alias: [],
+  },
+  {
     id: 'ayuda',
     etiqueta: '/ayuda',
     descripcion: 'Ver atajos y comandos disponibles',

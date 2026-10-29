@@ -20,9 +20,11 @@ dist/
 .vitest/
 coverage/
 
-# Configuracion local del harness: modelos, cabeceras y credenciales propias.
-# El ejemplo y los agentes SI se versionan; el archivo real y el estado local no.
+# Configuracion del harness: modelos y cabeceras se versionan.
+# Las credenciales van en .env (variableApiKey). El archivo real del proyecto
+# se versiona sin apiKey literal.
 .harness/*
+!.harness/config.json
 !.harness/config.example.json
 !.harness/agents.json
 

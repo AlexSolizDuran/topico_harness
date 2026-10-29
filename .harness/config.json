@@ -1,0 +1,45 @@
+{
+  "proveedorPorDefecto": "openrouter",
+  "modeloPorDefecto": "openai/gpt-4o",
+  "sesiones": {
+    "guardar": true,
+    "maximo": 50
+  },
+  "proveedores": {
+    "openrouter": {
+      "tipo": "openai-compatible",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "variableApiKey": "OPENROUTER_API_KEY",
+      "cabecerasExtra": {
+        "HTTP-Referer": "https://example.com",
+        "X-Title": "harness"
+      },
+      "modelos": [
+        {
+          "id": "openai/gpt-4o",
+          "soportaHerramientas": true,
+          "ventanaContexto": 128000,
+          "maxTokensSalida": 1024
+        },
+        {
+          "id": "deepseek/deepseek-chat",
+          "soportaHerramientas": true,
+          "ventanaContexto": 64000,
+          "maxTokensSalida": 1024
+        }
+      ]
+    },
+    "ollama": {
+      "tipo": "openai-compatible",
+      "baseUrl": "http://localhost:11434/v1",
+      "modelos": [
+        {
+          "id": "qwen2.5-coder:7b",
+          "soportaHerramientas": true,
+          "ventanaContexto": 32768,
+          "maxTokensSalida": 2048
+        }
+      ]
+    }
+  }
+}

@@ -113,6 +113,9 @@ export interface OpcionesSesion {
   almacen?: AlmacenSesiones | undefined
   sesionInicial?: SesionCargada | undefined
   gestorTareas?: GestorTareasBackground | undefined
+  instruccionesProyecto?: string | undefined
+  tokensSistemaInstrucciones?: number | undefined
+  skills?: Array<{ id: string; nombre: string; descripcion: string }> | undefined
 }
 
 /**
@@ -153,6 +156,10 @@ export class SesionInteractiva {
   private ultimaCompactacion?: ResumenCompactacion | undefined
   private metricas: MetricasContexto
   private promptSistemaBase: string
+  private instruccionesProyecto: string
+  private tokensSistemaInstrucciones = 0
+  private anunciosSkills: string[] = []
+  private skillsListado: Array<{ id: string; nombre: string; descripcion: string }> = []
   private agentes: DefinicionAgente[]
   private agentesExplicito: boolean
   private agenteActivo: string
@@ -182,6 +189,12 @@ export class SesionInteractiva {
         : '')
     this.fabricaProveedor = opciones.fabricaProveedor
     this.promptSistemaBase = opciones.promptSistema ?? ''
+    this.instruccionesProyecto = opciones.instruccionesProyecto ?? ''
+    this.tokensSistemaInstrucciones = opciones.tokensSistemaInstrucciones ?? 0
+    this.skillsListado = opciones.skills ?? []
+    this.anunciosSkills = this.skillsListado.map(
+      (s) => `- skill:${s.id} | ${s.nombre} | ${s.descripcion}`,
+    )
     this.agentesExplicito = Boolean(opciones.agentes)
     this.agentes =
       opciones.agentes && opciones.agentes.length > 0
@@ -292,10 +305,14 @@ export class SesionInteractiva {
 
   private componerPromptEfectivo(agente?: DefinicionAgente): string {
     const propio = agente?.prompt?.trim() ?? ''
-    if (this.promptSistemaBase && propio) {
-      return `${this.promptSistemaBase}\n\n${propio}`
+    const partes: string[] = []
+    if (this.promptSistemaBase) partes.push(this.promptSistemaBase)
+    if (this.instruccionesProyecto) partes.push(this.instruccionesProyecto)
+    if (this.anunciosSkills.length > 0) {
+      partes.push(`Skills disponibles:\n${this.anunciosSkills.join('\n')}`)
     }
-    return propio || this.promptSistemaBase
+    if (propio) partes.push(propio)
+    return partes.join('\n\n')
   }
 
   private esperarDecisionUsuario(
@@ -372,12 +389,17 @@ export class SesionInteractiva {
   }
 
   private calcularMetricas(usarUltimo = true): MetricasContexto {
+    const tokensSkills = this.anunciosSkills.reduce(
+      (acc, linea) => acc + estimarTokensTexto(linea),
+      0,
+    )
     return medirContexto(
       this.presupuesto,
       this.mensajesHistorial,
       usarUltimo ? this.ultimoTokens : undefined,
       this.tokensAcumulados,
       this.ultimaCompactacion,
+      this.tokensSistemaInstrucciones + tokensSkills,
     )
   }
 

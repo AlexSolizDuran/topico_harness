@@ -4,6 +4,7 @@ import {
   validarConjuntoAgentes,
 } from './agents/definiciones.js'
 import type { RegistroHerramientas } from './core/registry.js'
+import { cargarInstruccionesProyecto } from './instructions/cargar-instrucciones.js'
 import { type FabricaProveedor, SesionInteractiva } from './interface/runner.js'
 import type { EstadoSesionVisual } from './interface/state.js'
 import {
@@ -22,6 +23,7 @@ import {
   ErrorSesion,
   type SesionCargada,
 } from './sesiones/index.js'
+import { descubrirSkills, ErrorSkillExcedida } from './skills/index.js'
 import { GestorTareasBackground } from './subagents/background.js'
 import { crearHerramientaDelegacion } from './subagents/herramienta.js'
 import {
@@ -33,6 +35,7 @@ import {
   registrarHerramientaConValidacion,
 } from './tools/catalog.js'
 import type { PorteroPermisos, ReglaPermiso } from './types.js'
+import { estimarTokensTexto } from './context/tokens.js'
 
 export interface OpcionesHarness {
   directorioProyecto?: string | undefined
@@ -79,8 +82,14 @@ export function construirHarness(
   opciones: OpcionesHarness = {},
 ): HarnessConstruido {
   const directorioProyecto = opciones.directorioProyecto ?? process.cwd()
+  const instrucciones = cargarInstruccionesProyecto(directorioProyecto)
+  const { skills, avisos: avisosSkills } = descubrirSkills(directorioProyecto)
+  for (const aviso of avisosSkills) {
+    console.error(aviso)
+  }
   const registro =
-    opciones.registro ?? crearCatalogoPorDefecto({ directorioProyecto })
+    opciones.registro ??
+    crearCatalogoPorDefecto({ directorioProyecto, skills })
 
   let proveedor = opciones.proveedor
   let ventanaContexto = opciones.ventanaContexto ?? 128000
@@ -253,6 +262,15 @@ export function construirHarness(
     gestorTareas,
     ...(almacen ? { almacen } : {}),
     ...(sesionInicial ? { sesionInicial } : {}),
+    ...(instrucciones
+      ? {
+          instruccionesProyecto: instrucciones.contenido,
+          tokensSistemaInstrucciones: estimarTokensTexto(
+            instrucciones.contenido,
+          ),
+        }
+      : {}),
+    skills,
   })
   sesionRef = sesion
 

@@ -159,7 +159,9 @@ export async function ejecutarTurnoSubagente(
   }
 
   const nombresPermitidos = subagente.herramientas.filter(
-    (nombre) => HERRAMIENTAS_SOLO_LECTURA.has(nombre) && nombre !== 'task',
+    (nombre) =>
+      (HERRAMIENTAS_SOLO_LECTURA.has(nombre) || nombre === 'skill') &&
+      nombre !== 'task',
   )
   const registroHijo = opciones.catalogo.filtrar(nombresPermitidos)
 

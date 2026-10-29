@@ -5,6 +5,7 @@ import type { EntradaHerramienta, RegistroHerramientas } from './registry.js'
 export interface ResultadoDespacho {
   resultado: string
   esError: boolean
+  rutasExploradas?: string[] | undefined
 }
 
 export interface OpcionesDespacho {
@@ -260,9 +261,26 @@ export async function despacharHerramienta(
       validacion.filtrados,
       opciones.senalCancelacion,
     )
+    let rutasExploradas: string[] | undefined
+    try {
+      if (herramienta.rutasExploradas) {
+        const rutas = herramienta.rutasExploradas(validacion.filtrados)
+        if (Array.isArray(rutas)) {
+          rutasExploradas = rutas.filter(
+            (r) => typeof r === 'string' && r.length > 0,
+          )
+        }
+      }
+    } catch {
+      rutasExploradas = undefined
+    }
     return {
       resultado: salida,
       esError: false,
+      rutasExploradas:
+        rutasExploradas && rutasExploradas.length > 0
+          ? rutasExploradas
+          : undefined,
     }
   } catch (error) {
     const mensajeOriginal =

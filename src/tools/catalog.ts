@@ -2,12 +2,14 @@ import {
   type EntradaHerramienta,
   RegistroHerramientas,
 } from '../core/registry.js'
+import type { SkillDescubierta } from '../skills/descubrir.js'
 import { crearHerramientaEdicion } from './edit.js'
 import { crearHerramientaGlob } from './glob.js'
 import { crearHerramientaGrep } from './grep.js'
 import { crearHerramientaParche } from './patch.js'
 import { crearHerramientaLectura } from './read.js'
 import { crearHerramientaShell } from './shell.js'
+import { crearHerramientaSkill } from './skill.js'
 import { crearHerramientaEscritura } from './write.js'
 
 export class ErrorEsquemaRequerido extends Error {
@@ -56,6 +58,7 @@ export interface OpcionesCatalogo {
   directorioProyecto?: string | undefined
   plataforma?: NodeJS.Platform | undefined
   maximoContenido?: number | undefined
+  skills?: SkillDescubierta[] | undefined
 }
 
 /**
@@ -91,6 +94,17 @@ export function crearCatalogoPorDefecto(
 
   if (toolShell) {
     registrarHerramientaConValidacion(registro, toolShell)
+  }
+
+  if (opciones.skills && opciones.skills.length > 0) {
+    try {
+      registrarHerramientaConValidacion(
+        registro,
+        crearHerramientaSkill(opciones.skills),
+      )
+    } catch {
+      // no bloquear
+    }
   }
 
   return registro

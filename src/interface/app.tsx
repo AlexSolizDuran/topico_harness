@@ -234,7 +234,10 @@ export interface PropsBarraEstado {
   directorio?: string | undefined
 }
 
-export const BarraEstado: React.FC<PropsBarraEstado> = ({ estado }) => {
+export const BarraEstado: React.FC<PropsBarraEstado> = ({
+  estado,
+  directorio,
+}) => {
   const contexto = estado.contexto
   const usados = contexto.tokensActuales
   const limite = contexto.limitePresupuesto
@@ -244,13 +247,38 @@ export const BarraEstado: React.FC<PropsBarraEstado> = ({ estado }) => {
   const colorTokens =
     porcentaje >= 95 ? 'red' : porcentaje >= 80 ? 'yellow' : 'green'
   const modelo = estado.modeloActivo || 'sin modelo'
-  const nombreModelo = modelo.includes('/') ? modelo.split('/').pop() : modelo
+  const etiquetaEstado = estado.esperandoAprobacion
+    ? 'esperando aprobación'
+    : estado.turnoEnCurso
+      ? 'trabajando'
+      : 'listo'
+  const agente = estado.agenteActivo || 'build'
+  const tareasBackground = estado.tareasBackground ?? 0
 
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1}>
+    <Box
+      borderStyle="single"
+      borderColor="gray"
+      justifyContent="space-between"
+      paddingX={1}
+    >
       <Text color={colorTokens}>
-        Modelo: {nombreModelo} · Tokens: {uso} · {porcentaje}%
+        {modelo} · Tokens: {uso} · {porcentaje}%
         {contexto.esEstimado ? ' (est.)' : ''}
+      </Text>
+      {directorio ? (
+        <Text color="gray" wrap="truncate">
+          {directorio}
+        </Text>
+      ) : null}
+      <Text
+        color={
+          estado.esperandoAprobacion || estado.turnoEnCurso ? 'yellow' : 'green'
+        }
+      >
+        [{agente}]{estado.sesionId ? ` · ses ${estado.sesionId}` : ''}
+        {tareasBackground > 0 ? ` · ${tareasBackground} bg` : ''} ·{' '}
+        {etiquetaEstado}
       </Text>
     </Box>
   )
@@ -376,6 +404,38 @@ export const PanelSesiones: React.FC<{
   </Box>
 )
 
+export const PanelSkills: React.FC<{
+  skills?: Array<{ id: string; nombre: string; descripcion: string }>
+}> = ({ skills = [] }) => (
+  <Box
+    flexDirection="column"
+    borderStyle="round"
+    borderColor="cyan"
+    paddingX={1}
+    marginY={1}
+  >
+    <Text bold color="cyan">
+      Skills
+    </Text>
+    {skills.length === 0 ? (
+      <>
+        <Text color="gray">Sin skills descubiertas</Text>
+        <Text color="gray">
+          Colocá .opencode/skills/&lt;id&gt;/SKILL.md o .opencode/skills/&lt;id&gt;.md
+        </Text>
+      </>
+    ) : (
+      skills.map((skill) => (
+        <Text key={skill.id}>
+          <Text bold>skill:{skill.id}</Text> · {skill.nombre} ·{' '}
+          <Text color="gray">{skill.descripcion}</Text>
+        </Text>
+      ))
+    )}
+    <Text color="gray">Esc cierra este panel</Text>
+  </Box>
+)
+
 export const PanelAyuda: React.FC = () => (
   <Box
     flexDirection="column"
@@ -392,7 +452,7 @@ export const PanelAyuda: React.FC = () => (
     <Text>Ctrl+C cancela el turno o cierra · Ctrl+D cierra</Text>
     <Text>
       /agente elige el agente · /modelo elige el modelo · /contexto muestra el
-      uso
+      uso · /skills ver catálogo
     </Text>
     <Text color="gray">Esc cierra este panel</Text>
   </Box>

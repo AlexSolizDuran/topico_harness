@@ -6,6 +6,7 @@ export const HERRAMIENTAS_SOLO_LECTURA: ReadonlySet<string> = new Set([
   'read',
   'glob',
   'grep',
+  'skill',
 ])
 
 export interface DefinicionAgente {

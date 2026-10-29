@@ -15,6 +15,7 @@ export type AccionPermisoCanon =
   | 'shell_redireccion'
   | 'subagent'
   | 'external_directory'
+  | 'skill'
 
 export type AccionPermiso =
   | AccionPermisoCanon

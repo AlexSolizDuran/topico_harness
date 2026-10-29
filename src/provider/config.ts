@@ -68,7 +68,15 @@ export function rutaConfigProyecto(directorioProyecto: string): string {
   return join(directorioProyecto, '.harness', 'config.json')
 }
 
-function leerConfig(ruta: string): ConfiguracionHarness | undefined {
+function esRutaConfigProyecto(ruta: string, directorioProyecto?: string): boolean {
+  if (!directorioProyecto) return false
+  return ruta === rutaConfigProyecto(directorioProyecto)
+}
+
+function leerConfig(
+  ruta: string,
+  esProyecto = false,
+): ConfiguracionHarness | undefined {
   let texto: string
   try {
     texto = readFileSync(ruta, 'utf-8')
@@ -85,7 +93,7 @@ function leerConfig(ruta: string): ConfiguracionHarness | undefined {
     )
   }
 
-  return validarConfig(datos, ruta)
+  return validarConfig(datos, ruta, esProyecto)
 }
 
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
@@ -181,6 +189,7 @@ function validarProveedor(
   valor: unknown,
   id: string,
   ruta: string,
+  esProyecto: boolean,
 ): ConfiguracionProveedor {
   if (!esObjeto(valor)) {
     throw new ErrorConfiguracion(
@@ -210,6 +219,11 @@ function validarProveedor(
       `El proveedor '${id}' declara 'apiKey' inválido en ${ruta}`,
     )
   }
+  if (esProyecto && valor.apiKey !== undefined) {
+    throw new ErrorConfiguracion(
+      `El proveedor '${id}' no puede usar 'apiKey' literal en ${ruta}. Usá 'variableApiKey' y definí la variable en .env.`,
+    )
+  }
 
   return {
     tipo: valor.tipo,
@@ -225,7 +239,11 @@ function validarProveedor(
   }
 }
 
-function validarConfig(datos: unknown, ruta: string): ConfiguracionHarness {
+function validarConfig(
+  datos: unknown,
+  ruta: string,
+  esProyecto: boolean,
+): ConfiguracionHarness {
   if (!esObjeto(datos)) {
     throw new ErrorConfiguracion(`La configuración debe ser un objeto: ${ruta}`)
   }
@@ -237,7 +255,7 @@ function validarConfig(datos: unknown, ruta: string): ConfiguracionHarness {
 
   const proveedores: Record<string, ConfiguracionProveedor> = {}
   for (const [id, proveedor] of Object.entries(datos.proveedores)) {
-    proveedores[id] = validarProveedor(proveedor, id, ruta)
+    proveedores[id] = validarProveedor(proveedor, id, ruta, esProyecto)
   }
 
   return {
@@ -292,8 +310,8 @@ export function cargarConfig(
     opciones.directorioGlobal ?? rutaConfigGlobal(process.platform, entorno)
   const rutaProyecto = rutaConfigProyecto(directorioProyecto)
 
-  const global = leerConfig(rutaGlobal)
-  const proyecto = leerConfig(rutaProyecto)
+  const global = leerConfig(rutaGlobal, false)
+  const proyecto = leerConfig(rutaProyecto, true)
 
   if (!global && !proyecto) {
     throw new ErrorConfiguracion(
@@ -413,7 +431,7 @@ export function credencialDeProveedor(
     const valor = entorno[proveedor.variableApiKey]
     if (!valor || valor.trim().length === 0) {
       throw new ErrorConfiguracion(
-        `Falta la credencial requerida en la variable de entorno: ${proveedor.variableApiKey}`,
+        `Falta la credencial requerida en la variable de entorno: ${proveedor.variableApiKey}. Definila en .env o en tu entorno.`,
       )
     }
     return valor.trim()

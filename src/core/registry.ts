@@ -19,6 +19,9 @@ export interface EntradaHerramienta {
     | ((argumentos: Record<string, unknown>) => string | undefined)
     | undefined
   admiteParalelo?: boolean | undefined
+  rutasExploradas?:
+    | ((argumentos: Record<string, unknown>) => string[] | undefined)
+    | undefined
   ejecutar: (
     argumentos: Record<string, unknown>,
     senalCancelacion?: AbortSignal,

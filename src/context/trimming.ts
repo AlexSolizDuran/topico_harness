@@ -3,6 +3,8 @@ import type { Mensaje } from '../types.js'
 export const MARCADOR_RECORTADO =
   '[Contenido de herramienta omitido: ya procesado en un paso anterior]'
 
+export const MARCADOR_SKILL_NO_RECORTABLE = '__SKILL_NO_RECORTABLE__'
+
 /**
  * Reemplaza el contenido de resultados de herramientas antiguas por una marca de recorte.
  * Preserva intactos:
@@ -10,6 +12,7 @@ export const MARCADOR_RECORTADO =
  * 2. Todas las respuestas del modelo.
  * 3. El resultado de la herramienta más reciente (lo que el modelo acaba de ver).
  * 4. La correspondencia atómica de llamadas y respuestas.
+ * 5. Los resultados marcados como no recortables (skill).
  */
 export function recortarSalidasHerramientasViejas(
   mensajes: Mensaje[],
@@ -31,6 +34,11 @@ export function recortarSalidasHerramientasViejas(
 
     // El último resultado de herramienta no se recorta: es lo que el modelo acaba de ver
     if (index === ultimoIndiceTool) {
+      return msg
+    }
+
+    // Resultados marcados como no recortables (skill) se conservan
+    if (msg.resultado?.includes(MARCADOR_SKILL_NO_RECORTABLE)) {
       return msg
     }
 

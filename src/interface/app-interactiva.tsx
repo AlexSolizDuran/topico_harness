@@ -16,6 +16,7 @@ import {
   PanelAyuda,
   PanelContexto,
   PanelSesiones,
+  PanelSkills,
   PieAtajos,
   SelectorAgente,
   SelectorModelo,
@@ -59,7 +60,7 @@ export function AppInteractiva({
   const [selectorAgenteAbierto, setSelectorAgenteAbierto] = useState(false)
   const [indiceAgente, setIndiceAgente] = useState(0)
   const [panel, setPanel] = useState<
-    'contexto' | 'ayuda' | 'sesiones' | 'busqueda' | null
+    'contexto' | 'ayuda' | 'sesiones' | 'busqueda' | 'skills' | null
   >(null)
   const [sesiones, setSesiones] = useState<SesionMetadata[]>([])
   const [busqueda, setBusqueda] = useState<ResultadoBusquedaSesion[]>([])
@@ -232,6 +233,11 @@ export function AppInteractiva({
 
     if (id === 'contexto' || id === 'context') {
       setPanel('contexto')
+      return
+    }
+
+    if (id === 'skills') {
+      setPanel('skills')
       return
     }
 
@@ -546,6 +552,7 @@ export function AppInteractiva({
         )}
 
       {panel === 'contexto' && <PanelContexto metricas={estado.contexto} />}
+      {panel === 'skills' && <PanelSkills skills={(estado as any).skills} />}
       {panel === 'sesiones' && (
         <PanelSesiones sesiones={sesiones} activa={estado.sesionId} />
       )}
