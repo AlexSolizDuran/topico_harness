@@ -26,6 +26,10 @@ export function crearHerramientaEscritura(
     },
     accionPermiso: 'edit',
     obtenerRecurso: (args) => String(args.ruta ?? ''),
+    rutasExploradas: (args) => {
+      const ruta = typeof args.ruta === 'string' ? args.ruta.trim() : ''
+      return ruta ? [ruta] : []
+    },
     motivoAprobacionObligatoria: (args) =>
       motivoAprobacionRuta(String(args.ruta ?? ''), directorioProyecto),
     admiteParalelo: false,

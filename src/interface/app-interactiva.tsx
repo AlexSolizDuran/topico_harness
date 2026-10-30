@@ -552,7 +552,9 @@ export function AppInteractiva({
         )}
 
       {panel === 'contexto' && <PanelContexto metricas={estado.contexto} />}
-      {panel === 'skills' && <PanelSkills skills={(estado as any).skills} />}
+      {panel === 'skills' && (
+        <PanelSkills skills={estado.skills} omitidas={estado.skillsOmitidas} />
+      )}
       {panel === 'sesiones' && (
         <PanelSesiones sesiones={sesiones} activa={estado.sesionId} />
       )}

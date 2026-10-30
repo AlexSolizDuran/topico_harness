@@ -1,11 +1,12 @@
 import { sanitizarTexto } from '../provider/credentials.js'
-import type { PorteroPermisos } from '../types.js'
+import type { EjecutorHooks, PorteroPermisos } from '../types.js'
 import type { EntradaHerramienta, RegistroHerramientas } from './registry.js'
 
 export interface ResultadoDespacho {
   resultado: string
   esError: boolean
   rutasExploradas?: string[] | undefined
+  avisosHooks?: string[] | undefined
 }
 
 export interface OpcionesDespacho {
@@ -14,6 +15,7 @@ export interface OpcionesDespacho {
   portero?: PorteroPermisos | undefined
   idLlamada?: string | undefined
   omitirGatePermiso?: boolean | undefined
+  hooks?: EjecutorHooks | undefined
 }
 
 /**
@@ -204,6 +206,116 @@ function ejecutarConCancelacion(
   })
 }
 
+function extraerRutasExploradas(
+  herramienta: EntradaHerramienta,
+  argumentos: Record<string, unknown>,
+): string[] | undefined {
+  try {
+    if (!herramienta.rutasExploradas) return undefined
+    const rutas = herramienta.rutasExploradas(argumentos)
+    if (!Array.isArray(rutas)) return undefined
+    const filtradas = rutas.filter((r) => typeof r === 'string' && r.length > 0)
+    return filtradas.length > 0 ? filtradas : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function ejecutarHerramientaConHooks(
+  herramienta: EntradaHerramienta,
+  argumentos: Record<string, unknown>,
+  opciones: OpcionesDespacho,
+  credenciales: string[],
+): Promise<ResultadoDespacho> {
+  const avisosHooks: string[] = []
+  const notas: string[] = []
+
+  if (opciones.hooks) {
+    const resPre = await opciones.hooks.ejecutar(
+      {
+        evento: 'preTool',
+        herramienta: herramienta.nombre,
+        argumentos,
+      },
+      opciones.senalCancelacion,
+    )
+    avisosHooks.push(...resPre.avisos)
+    notas.push(...resPre.notas)
+    if (resPre.bloqueado) {
+      const msg =
+        resPre.mensajeBloqueo || 'Ejecución bloqueada por hook preTool.'
+      avisosHooks.push(`Hook preTool bloqueó '${herramienta.nombre}': ${msg}`)
+      return {
+        resultado: `ERROR: ${msg}\nLa operación no se completó.`,
+        esError: true,
+        ...(avisosHooks.length > 0 ? { avisosHooks } : {}),
+      }
+    }
+  }
+
+  let salida: string
+  let esError = false
+  let rutasExploradas: string[] | undefined
+
+  try {
+    salida = await ejecutarConCancelacion(
+      herramienta,
+      argumentos,
+      opciones.senalCancelacion,
+    )
+    rutasExploradas = extraerRutasExploradas(herramienta, argumentos)
+  } catch (error) {
+    const mensajeOriginal =
+      error instanceof Error ? error.message : String(error)
+    const mensajeLimpio = sanitizarTexto(mensajeOriginal, credenciales)
+    const truncado =
+      mensajeLimpio.length > 5000
+        ? `${mensajeLimpio.slice(0, 5000)}... [Truncado]`
+        : mensajeLimpio
+    salida = `ERROR: ${truncado}\nLa operación no se completó.`
+    esError = true
+  }
+
+  if (opciones.hooks) {
+    const resPost = await opciones.hooks.ejecutar(
+      {
+        evento: 'postTool',
+        herramienta: herramienta.nombre,
+        argumentos,
+        resultado: salida,
+      },
+      opciones.senalCancelacion,
+    )
+    avisosHooks.push(...resPost.avisos)
+    notas.push(...resPost.notas)
+    if (resPost.bloqueado) {
+      const msg =
+        resPost.mensajeBloqueo || 'Resultado bloqueado por hook postTool.'
+      avisosHooks.push(`Hook postTool bloqueó '${herramienta.nombre}': ${msg}`)
+      return {
+        resultado: `ERROR: ${msg}\nLa operación no se completó.`,
+        esError: true,
+        ...(rutasExploradas ? { rutasExploradas } : {}),
+        ...(avisosHooks.length > 0 ? { avisosHooks } : {}),
+      }
+    }
+  }
+
+  if (notas.length > 0) {
+    for (const nota of notas) {
+      avisosHooks.push(`Nota de hook (${herramienta.nombre}): ${nota}`)
+    }
+    salida = `${salida}\n${notas.map((n) => `[Nota de hook]: ${n}`).join('\n')}`
+  }
+
+  return {
+    resultado: salida,
+    esError,
+    ...(rutasExploradas ? { rutasExploradas } : {}),
+    ...(avisosHooks.length > 0 ? { avisosHooks } : {}),
+  }
+}
+
 /**
  * Despacha la ejecución de una herramienta resolviéndola contra el registro,
  * validando sus argumentos y capturando cualquier error para retornarlo como texto al modelo.
@@ -255,45 +367,10 @@ export async function despacharHerramienta(
     return rechazoPermiso
   }
 
-  try {
-    const salida = await ejecutarConCancelacion(
-      herramienta,
-      validacion.filtrados,
-      opciones.senalCancelacion,
-    )
-    let rutasExploradas: string[] | undefined
-    try {
-      if (herramienta.rutasExploradas) {
-        const rutas = herramienta.rutasExploradas(validacion.filtrados)
-        if (Array.isArray(rutas)) {
-          rutasExploradas = rutas.filter(
-            (r) => typeof r === 'string' && r.length > 0,
-          )
-        }
-      }
-    } catch {
-      rutasExploradas = undefined
-    }
-    return {
-      resultado: salida,
-      esError: false,
-      rutasExploradas:
-        rutasExploradas && rutasExploradas.length > 0
-          ? rutasExploradas
-          : undefined,
-    }
-  } catch (error) {
-    const mensajeOriginal =
-      error instanceof Error ? error.message : String(error)
-    const mensajeLimpio = sanitizarTexto(mensajeOriginal, credenciales)
-    const truncado =
-      mensajeLimpio.length > 5000
-        ? `${mensajeLimpio.slice(0, 5000)}... [Truncado]`
-        : mensajeLimpio
-
-    return {
-      resultado: `ERROR: ${truncado}\nLa operación no se completó.`,
-      esError: true,
-    }
-  }
+  return ejecutarHerramientaConHooks(
+    herramienta,
+    validacion.filtrados,
+    opciones,
+    credenciales,
+  )
 }

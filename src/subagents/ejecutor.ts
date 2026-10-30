@@ -10,7 +10,7 @@ import type { RegistroHerramientas } from '../core/registry.js'
 import { ejecutarTurno, type PreparacionHistorial } from '../core/turn.js'
 import type { Proveedor } from '../provider/types.js'
 import { truncarContenido } from '../tools/truncate.js'
-import type { Mensaje, PorteroPermisos } from '../types.js'
+import type { EjecutorHooks, Mensaje, PorteroPermisos } from '../types.js'
 
 export interface ProveedorResueltoSubagente {
   proveedor: Proveedor
@@ -33,6 +33,7 @@ export interface OpcionesEjecucionSubagente {
   senalCancelacionHijo?: AbortSignal | undefined
   enTurnoHijo?: boolean | undefined
   portero?: PorteroPermisos | undefined
+  hooks?: EjecutorHooks | undefined
 }
 
 export interface ResultadoSubagente {
@@ -184,6 +185,7 @@ export async function ejecutarTurnoSubagente(
       credencialesSanitizar: credenciales,
       prepararHistorial: crearPreparadorHistorialHijo(presupuesto),
       portero: opciones.portero,
+      hooks: opciones.hooks,
       enTurnoHijo: true,
     })
 

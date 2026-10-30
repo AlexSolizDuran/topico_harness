@@ -1,4 +1,5 @@
 import type {
+  EjecutorHooks,
   EventoTurno,
   Mensaje,
   PorteroPermisos,
@@ -19,6 +20,19 @@ export interface LlamadaPreparada {
   bloqueoLoop?: string | undefined
   rechazoPrevio?: ResultadoDespacho | undefined
 }
+
+export interface ResultadoExploracionCallback {
+  cargadas: Array<{
+    rutaRelativa: string
+    tamanioBytes: number
+    tokens: number
+  }>
+  errores: string[]
+}
+
+export type AlExplorarRutas = (
+  rutas: readonly string[],
+) => ResultadoExploracionCallback
 
 /**
  * Agrupa en una misma tanda las llamadas consecutivas cuyas herramientas
@@ -133,6 +147,7 @@ function ejecutarItemTanda(
   registro: RegistroHerramientas,
   credenciales: string[] | undefined,
   senalCancelacion: AbortSignal | undefined,
+  hooks: EjecutorHooks | undefined,
 ): Promise<ResultadoDespacho> {
   if (item.bloqueoLoop) {
     return Promise.resolve({
@@ -152,6 +167,7 @@ function ejecutarItemTanda(
       senalCancelacion,
       idLlamada: item.llamada.id,
       omitirGatePermiso: true,
+      hooks,
     },
   )
 }
@@ -162,6 +178,8 @@ async function* correrTandaConcurrente(
   credenciales: string[] | undefined,
   senalCancelacion: AbortSignal | undefined,
   historial: Mensaje[],
+  alExplorarRutas?: AlExplorarRutas | undefined,
+  hooks?: EjecutorHooks | undefined,
 ): AsyncGenerator<EventoTurno, void, unknown> {
   for (const item of items) {
     yield {
@@ -184,6 +202,7 @@ async function* correrTandaConcurrente(
         registro,
         credenciales,
         senalCancelacion,
+        hooks,
       )
       resultadosPorIndice[indice] = despacho
     } catch (error) {
@@ -197,6 +216,31 @@ async function* correrTandaConcurrente(
       resultado:
         'ERROR: Operación sin resultado.\nLa operación no se completó.',
       esError: true,
+    }
+
+    if (res.rutasExploradas?.length && alExplorarRutas) {
+      const exploracion = alExplorarRutas(res.rutasExploradas)
+      for (const cargada of exploracion.cargadas) {
+        colaEventos.push({
+          tipo: 'instrucciones_cargadas',
+          ruta: cargada.rutaRelativa,
+          tamanioBytes: cargada.tamanioBytes,
+          tokens: cargada.tokens,
+        })
+      }
+      if (exploracion.errores.length > 0) {
+        res.resultado = `${res.resultado}\n${exploracion.errores.join('\n')}`
+        resultadosPorIndice[indice] = res
+      }
+    }
+
+    if (res.avisosHooks?.length) {
+      for (const aviso of res.avisosHooks) {
+        colaEventos.push({
+          tipo: 'aviso_hook',
+          texto: aviso,
+        })
+      }
     }
 
     colaEventos.push({
@@ -267,6 +311,8 @@ export interface ContextoEjecucionTandas {
   portero?: PorteroPermisos | undefined
   detectorLoops: DetectorLoops
   historial: Mensaje[]
+  alExplorarRutas?: AlExplorarRutas | undefined
+  hooks?: EjecutorHooks | undefined
 }
 
 export async function* ejecutarTandasDeHerramientas(
@@ -319,6 +365,8 @@ export async function* ejecutarTandasDeHerramientas(
       ctx.credenciales,
       ctx.senalCancelacion,
       ctx.historial,
+      ctx.alExplorarRutas,
+      ctx.hooks,
     )
 
     if (ctx.senalCancelacion?.aborted) {

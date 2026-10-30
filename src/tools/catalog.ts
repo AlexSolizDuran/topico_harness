@@ -59,6 +59,7 @@ export interface OpcionesCatalogo {
   plataforma?: NodeJS.Platform | undefined
   maximoContenido?: number | undefined
   skills?: SkillDescubierta[] | undefined
+  alCargarSkill?: ((id: string) => void) | undefined
 }
 
 /**
@@ -100,7 +101,9 @@ export function crearCatalogoPorDefecto(
     try {
       registrarHerramientaConValidacion(
         registro,
-        crearHerramientaSkill(opciones.skills),
+        crearHerramientaSkill(opciones.skills, {
+          alCargarSkill: opciones.alCargarSkill,
+        }),
       )
     } catch {
       // no bloquear

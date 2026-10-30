@@ -4,19 +4,23 @@ import {
   calcularTokensHistorial,
   compactarHistorial,
   ENCABEZADO_RESUMEN,
+  ErrorConfiguracionUmbrales,
   ErrorPresupuestoExcedido,
   generarTextoResumen,
   MARCADOR_RECORTADO,
   medirContexto,
   PORCENTAJE_PRESUPUESTO_DEFECTO,
   PresupuestoContexto,
+  podarPasosLectura,
   recortarSalidasHerramientasViejas,
+  UMBRALES_POR_DEFECTO,
 } from '../../src/context/index.js'
 import {
   ejecutarTurno,
   RegistroHerramientas,
   validarHistorialAtomico,
 } from '../../src/core/index.js'
+import { SesionInteractiva } from '../../src/interface/runner.js'
 import { ProveedorSimulado } from '../../src/provider/index.js'
 import { ejecutarTurnoSubagente } from '../../src/subagents/index.js'
 import type { Mensaje } from '../../src/types.js'
@@ -114,7 +118,7 @@ describe('context Specification Tests', () => {
         {
           rol: 'tool',
           idLlamada: 'c1',
-          resultado: 'contenido viejo y largo de 8KB',
+          resultado: 'contenido viejo y largo de 8KB '.repeat(40),
         },
         { rol: 'user', contenido: 'paso 2' },
         {
@@ -698,6 +702,342 @@ describe('context Specification Tests', () => {
       )
       const metricas = medirContexto(presupuestoPadre, estado.mensajes)
       expect(metricas.tokensActuales).toBeGreaterThan(0)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Escenarios 260 + 300: contexto fino (umbrales, enmascarado selectivo, poda, resumen por bloque y visibilidad)
+  // --------------------------------------------------------------------------
+  describe('Requirement: El presupuesto estimado cuenta las instrucciones y el catálogo de skills', () => {
+    it('El presupuesto estimado cuenta las instrucciones', () => {
+      // WHEN hay un AGENTS.md cargado y el provider no reportó el conteo de tokens
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const metricas = medirContexto(
+        presupuesto,
+        [{ rol: 'user', contenido: '1234567890123456' }], // 4 tokens
+        undefined,
+        0,
+        undefined,
+        { tokensSistema: 50, tokensSkills: 20 },
+      )
+
+      // THEN el cálculo estimado suma los tokens de las instrucciones al uso actual
+      expect(metricas.tokensActuales).toBe(74)
+      expect(metricas.tokensSistema).toBe(50)
+      expect(metricas.tokensSkills).toBe(20)
+    })
+  })
+
+  describe('Requirement: Enmascarado selectivo con marcador recuperable (300)', () => {
+    it('El marcador dice cómo recuperar y el recorte es recuperable', () => {
+      // WHEN el sistema recorta el resultado de una herramienta
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'lee main.ts' },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c1', nombre: 'read', argumentos: { ruta: 'src/main.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'c1',
+          resultado: 'Línea de código extensa\n'.repeat(100),
+        },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c2', nombre: 'read', argumentos: { ruta: 'src/otro.ts' } },
+          ],
+        },
+        { rol: 'tool', idLlamada: 'c2', resultado: 'reciente' },
+      ]
+
+      const recortados = recortarSalidasHerramientasViejas(mensajes)
+
+      // THEN la marca nombra la herramienta y el argumento para volver a obtenerlo
+      expect(recortados[2]?.resultado).toContain('read')
+      expect(recortados[2]?.resultado).toContain('src/main.ts')
+    })
+
+    it('Una salida pequeña no se recorta', () => {
+      // WHEN un resultado de herramienta pesa menos que el tamaño mínimo (< 1 KiB)
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'lee corto.ts' },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c1', nombre: 'read', argumentos: { ruta: 'corto.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'c1',
+          resultado: 'export const x = 1;',
+        },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c2', nombre: 'read', argumentos: { ruta: 'otro.ts' } },
+          ],
+        },
+        { rol: 'tool', idLlamada: 'c2', resultado: 'reciente' },
+      ]
+
+      const recortados = recortarSalidasHerramientasViejas(mensajes)
+
+      // THEN el sistema lo conserva aunque sea antiguo
+      expect(recortados[2]?.resultado).toBe('export const x = 1;')
+    })
+  })
+
+  describe('Requirement: En el umbral de poda el sistema elimina pasos que no aportaron', () => {
+    it('Un paso de solo lecturas ya enmascaradas se poda respetando la atomicidad y conservando ediciones y paso en curso', () => {
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'investiga y edita' },
+        // Paso 1: solo lectura ya enmascarada y sin texto del modelo -> se poda completo (assistant + tool)
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'r1', nombre: 'read', argumentos: { ruta: 'viejo.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'r1',
+          resultado: `${MARCADOR_RECORTADO}`,
+        },
+        // Paso 2: contiene una edición -> NO se poda
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'e1', nombre: 'edit', argumentos: { ruta: 'viejo.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'e1',
+          resultado: `${MARCADOR_RECORTADO}`,
+        },
+        // Paso 3 (en curso / último): solo lectura enmascarada pero es el último paso -> NO se poda
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'r2', nombre: 'read', argumentos: { ruta: 'actual.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'r2',
+          resultado: `${MARCADOR_RECORTADO}`,
+        },
+      ]
+
+      const podados = podarPasosLectura(mensajes)
+
+      expect(() => validarHistorialAtomico(podados)).not.toThrow()
+      expect(podados).toHaveLength(5)
+      expect(
+        podados.some(
+          (m) =>
+            m.idLlamada === 'r1' ||
+            m.llamadasHerramientas?.some((l) => l.id === 'r1'),
+        ),
+      ).toBe(false)
+      expect(podados.some((m) => m.idLlamada === 'e1')).toBe(true)
+      expect(podados.some((m) => m.idLlamada === 'r2')).toBe(true)
+    })
+  })
+
+  describe('Requirement: Resumen por bloque antes de compactar todo y aislamiento de fallo', () => {
+    it('Se resume un bloque antes de compactar todo', () => {
+      // WHEN el historial alcanza el umbral de resumen (90%) y todavía no el de compactación (99%)
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8, // limite = 800; 90% = 720, 99% = 792
+      })
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'T1_U '.repeat(120) },
+        { rol: 'assistant', contenido: 'T1_A '.repeat(120) },
+        { rol: 'user', contenido: 'T2_U_CONSERVAR '.repeat(40) },
+        { rol: 'assistant', contenido: 'T2_A_CONSERVAR '.repeat(40) },
+        { rol: 'user', contenido: 'T3_U_RECIENTE '.repeat(40) },
+        { rol: 'assistant', contenido: 'T3_A_RECIENTE '.repeat(40) },
+      ]
+
+      const resultado = aplicarPipelineContexto(mensajes, presupuesto, {
+        entrada: 740,
+        salida: 0,
+      })
+
+      // THEN el sistema resume solo el bloque más antiguo (T1) y conserva T2 y T3
+      expect(resultado.etapaAplicada).toBe('resumir')
+      expect(resultado.resumido).toBe(true)
+      expect(
+        resultado.mensajes.some((m) => m.contenido?.includes('T1_U')),
+      ).toBe(false)
+      expect(
+        resultado.mensajes.some((m) => m.contenido?.includes('T2_U_CONSERVAR')),
+      ).toBe(true)
+      expect(
+        resultado.mensajes.some((m) => m.contenido?.includes('T3_U_RECIENTE')),
+      ).toBe(true)
+    })
+
+    it('Un resumen fallido no destruye el historial', () => {
+      // WHEN el resumen de un bloque no se puede generar
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8,
+      })
+      const mensajes: Mensaje[] = [
+        { rol: 'user', contenido: 'T1 '.repeat(200) },
+        { rol: 'assistant', contenido: 'R1 '.repeat(200) },
+        { rol: 'user', contenido: 'T2 '.repeat(200) },
+        { rol: 'assistant', contenido: 'R2 '.repeat(200) },
+      ]
+
+      const resultado = aplicarPipelineContexto(
+        mensajes,
+        presupuesto,
+        { entrada: 740, salida: 0 },
+        {
+          generadorResumen: () => {
+            throw new Error('fallo al resumir bloque')
+          },
+        },
+      )
+
+      // THEN el sistema conserva el historial intacto e informa el fallo
+      expect(resultado.mensajes).toBe(mensajes)
+      expect(resultado.error).toContain('fallo al resumir bloque')
+    })
+  })
+
+  describe('Requirement: En el umbral de aviso el sistema informa sin modificar el historial', () => {
+    it('Se cruza el umbral de aviso y el aviso no se repite en el mismo turno', async () => {
+      // 1. En el pipeline directo en [70%, 80%)
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8, // limite = 800; 70% = 560, 80% = 640
+      })
+      const mensajes: Mensaje[] = [{ rol: 'user', contenido: 'hola' }]
+      const resAviso = aplicarPipelineContexto(mensajes, presupuesto, {
+        entrada: 580,
+        salida: 0,
+      })
+      expect(resAviso.etapaAplicada).toBe('aviso')
+      expect(resAviso.mensajes).toBe(mensajes)
+      expect(resAviso.avisoUmbral).toBeGreaterThanOrEqual(70)
+
+      // 2. En un turno con múltiples pasos sobre el 70%, el aviso se emite una sola vez
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: {
+          type: 'object',
+          properties: { ruta: { type: 'string' } },
+          required: ['ruta'],
+        },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => 'x'.repeat(200),
+      })
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: 'c1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          {
+            llamadasHerramienta: [
+              { id: 'c2', nombre: 'read', argumentos: { ruta: 'b.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Terminado'] },
+        ],
+      })
+
+      const sesion = new SesionInteractiva({
+        proveedor,
+        registro,
+        ventanaContexto: 1000, // limite = 800, 70% = 560 tokens (~2240 chars)
+      })
+      await sesion.enviarMensaje('P'.repeat(2300))
+
+      const avisosContexto = sesion
+        .obtenerEstado()
+        .historial.filter(
+          (e) =>
+            e.tipo === 'aviso' &&
+            e.texto.includes('del presupuesto de contexto'),
+        )
+      expect(avisosContexto).toHaveLength(1)
+    })
+  })
+
+  describe('Requirement: Los umbrales son configurables y ordenados y la etapa aplicada es visible', () => {
+    it('Los valores por defecto son 70, 80, 85, 90 y 99%, una configuración desordenada falla y la etapa y tokens recuperados son visibles', () => {
+      // Valores por defecto
+      expect(UMBRALES_POR_DEFECTO).toEqual({
+        aviso: 0.7,
+        enmascarar: 0.8,
+        podar: 0.85,
+        resumir: 0.9,
+        compactar: 0.99,
+      })
+
+      // Configuración desordenada falla nombrando los umbrales
+      expect(
+        () =>
+          new PresupuestoContexto({
+            ventanaContexto: 1000,
+            umbrales: {
+              aviso: 85,
+              enmascarar: 80,
+              podar: 85,
+              resumir: 90,
+              compactar: 99,
+            },
+          }),
+      ).toThrow(ErrorConfiguracionUmbrales)
+
+      // Visibilidad de etapa aplicada y tokens recuperados
+      const presupuesto = new PresupuestoContexto({
+        ventanaContexto: 1000,
+        porcentajeLimite: 0.8, // limite = 800, 80% = 640
+      })
+      const mensajesConSalidaGrande: Mensaje[] = [
+        { rol: 'user', contenido: 'lee grande.ts' },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c1', nombre: 'read', argumentos: { ruta: 'grande.ts' } },
+          ],
+        },
+        {
+          rol: 'tool',
+          idLlamada: 'c1',
+          resultado: 'G'.repeat(2600), // ~650 tokens
+        },
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'c2', nombre: 'read', argumentos: { ruta: 'chico.ts' } },
+          ],
+        },
+        { rol: 'tool', idLlamada: 'c2', resultado: 'ok' },
+      ]
+
+      const res = aplicarPipelineContexto(mensajesConSalidaGrande, presupuesto)
+      expect(res.etapaAplicada).toBe('enmascarar')
+      expect(res.tokensRecuperados).toBeGreaterThan(500)
     })
   })
 })

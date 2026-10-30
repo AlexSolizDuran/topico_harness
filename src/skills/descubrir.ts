@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { readdirSync, readFileSync, type Stats, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 export const DEFAULT_TOPE_SKILL_BYTES = 32 * 1024
 
@@ -20,6 +20,12 @@ export interface SkillSoporte {
   ruta: string
 }
 
+export interface SkillOmitida {
+  id: string
+  motivo: string
+  ruta?: string | undefined
+}
+
 export interface SkillDescubierta {
   id: string
   nombre: string
@@ -36,7 +42,7 @@ interface ParseoFrontmatter {
   cuerpoInicio: number
 }
 
-function esSlugValido(id: string): boolean {
+export function esSlugValido(id: string): boolean {
   if (!id) return false
   if (id.length > 64) return false
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)
@@ -67,38 +73,59 @@ function extraerCuerpo(contenido: string, inicio: number): string {
   return contenido.slice(inicio)
 }
 
-function listarSoportes(directorio: string): string[] {
-  const soportes: string[] = []
+function listarSoportesRecursivo(
+  directorio: string,
+  acumulado: string[],
+): void {
+  if (acumulado.length >= 10) return
   try {
     const entradas = readdirSync(directorio, { withFileTypes: true })
     for (const entrada of entradas) {
-      if (entrada.isDirectory()) continue
-      const nombre = entrada.name
-      if (nombre === 'SKILL.md') continue
-      const ruta = join(directorio, nombre)
+      if (acumulado.length >= 10) break
+      const ruta = join(directorio, entrada.name)
+      if (entrada.isDirectory()) {
+        listarSoportesRecursivo(ruta, acumulado)
+        continue
+      }
+      if (entrada.name === 'SKILL.md') continue
       try {
         const stat = statSync(ruta)
         if (stat.isFile()) {
-          soportes.push(ruta)
+          acumulado.push(ruta)
         }
       } catch {
-        // ignorar
+        // ignorar archivo inaccesible
       }
-      if (soportes.length >= 10) break
     }
   } catch {
-    // ignorar
+    // ignorar directorio inaccesible
   }
+}
+
+function listarSoportes(directorio: string): string[] {
+  const soportes: string[] = []
+  listarSoportesRecursivo(directorio, soportes)
   return soportes.slice(0, 10)
+}
+
+export function cargarCuerpoSkill(skill: SkillDescubierta): string {
+  if (skill.cuerpo) {
+    return skill.cuerpo
+  }
+  const contenido = readFileSync(skill.rutaArchivo, 'utf-8')
+  const fm = parsearFrontmatter(contenido)
+  return fm ? extraerCuerpo(contenido, fm.cuerpoInicio) : contenido
 }
 
 function leerSkillArchivo(
   rutaArchivo: string,
   id: string,
   topeBytes: number,
+  esDirectorio: boolean,
   avisos: string[],
+  omitidas: SkillOmitida[],
 ): SkillDescubierta | null {
-  let stat
+  let stat: Stats
   try {
     stat = statSync(rutaArchivo)
   } catch {
@@ -117,67 +144,97 @@ function leerSkillArchivo(
   }
   const fm = parsearFrontmatter(contenido)
   if (!fm) {
-    avisos.push(`Skill omitida (${id}): frontmatter inválido en ${rutaArchivo}`)
+    const motivo = `frontmatter inválido en ${rutaArchivo}`
+    avisos.push(`Skill omitida (${id}): ${motivo}`)
+    omitidas.push({ id, motivo, ruta: rutaArchivo })
     return null
   }
-  const descripcion = fm.datos['description']?.trim()
+  const descripcion = fm.datos.description?.trim()
   if (!descripcion) {
-    avisos.push(`Skill omitida (${id}): falta description en ${rutaArchivo}`)
+    const motivo = `falta description en ${rutaArchivo}`
+    avisos.push(`Skill omitida (${id}): ${motivo}`)
+    omitidas.push({ id, motivo, ruta: rutaArchivo })
     return null
   }
-  const nombre = fm.datos['name']?.trim() || id
-  const cuerpo = extraerCuerpo(contenido, fm.cuerpoInicio)
+  const nombre = fm.datos.name?.trim() || id
+  const cuerpoInicio = fm.cuerpoInicio
   const rutaDirectorio = dirname(rutaArchivo)
-  const soportes = rutaDirectorio === dirname(rutaArchivo) ? listarSoportes(rutaDirectorio) : []
-  return {
+  const soportes = esDirectorio ? listarSoportes(rutaDirectorio) : []
+
+  const skill: SkillDescubierta = {
     id,
     nombre,
     descripcion,
     rutaArchivo,
     rutaDirectorio,
-    cuerpo,
+    cuerpo: '',
     tamanioBytes,
     soportes,
   }
+
+  Object.defineProperty(skill, 'cuerpo', {
+    enumerable: true,
+    configurable: true,
+    get(): string {
+      const texto = readFileSync(rutaArchivo, 'utf-8')
+      return extraerCuerpo(texto, cuerpoInicio)
+    },
+  })
+
+  return skill
 }
 
 export function descubrirSkills(
   directorioProyecto: string,
-  opciones: { topeBytes?: number } = {},
-): { skills: SkillDescubierta[]; avisos: string[] } {
+  opciones: { topeBytes?: number | undefined } = {},
+): {
+  skills: SkillDescubierta[]
+  avisos: string[]
+  omitidas: SkillOmitida[]
+} {
   const topeBytes = opciones.topeBytes ?? DEFAULT_TOPE_SKILL_BYTES
   const raizSkills = join(directorioProyecto, '.opencode', 'skills')
   const avisos: string[] = []
+  const omitidas: SkillOmitida[] = []
   const skills: SkillDescubierta[] = []
   const vistos = new Set<string>()
 
   try {
     const statRaiz = statSync(raizSkills)
     if (!statRaiz.isDirectory()) {
-      return { skills: [], avisos: [] }
+      return { skills: [], avisos: [], omitidas: [] }
     }
   } catch {
-    return { skills: [], avisos: [] }
+    return { skills: [], avisos: [], omitidas: [] }
   }
 
   try {
     const entradas = readdirSync(raizSkills, { withFileTypes: true })
-    // forma directorio
+    // Forma directorio: .opencode/skills/<id>/SKILL.md
     for (const entrada of entradas) {
       if (!entrada.isDirectory()) continue
       const id = entrada.name
       if (!esSlugValido(id)) {
-        avisos.push(`Skill omitida (${id}): identificador no válido`)
+        const motivo = 'identificador no es un slug válido'
+        avisos.push(`Skill omitida (${id}): ${motivo}`)
+        omitidas.push({ id, motivo, ruta: join(raizSkills, id) })
         continue
       }
       const rutaArchivo = join(raizSkills, id, 'SKILL.md')
-      const skill = leerSkillArchivo(rutaArchivo, id, topeBytes, avisos)
+      const skill = leerSkillArchivo(
+        rutaArchivo,
+        id,
+        topeBytes,
+        true,
+        avisos,
+        omitidas,
+      )
       if (skill) {
         skills.push(skill)
         vistos.add(id)
       }
     }
-    // forma plana
+    // Forma plana: .opencode/skills/<id>.md
     for (const entrada of entradas) {
       if (entrada.isDirectory()) continue
       const nombreArchivo = entrada.name
@@ -186,29 +243,45 @@ export function descubrirSkills(
       const base = nombreArchivo.replace(/\.md$/i, '')
       if (vistos.has(base)) continue
       if (!esSlugValido(base)) {
-        avisos.push(`Skill omitida (${base}): identificador no válido`)
+        const motivo = 'identificador no es un slug válido'
+        avisos.push(`Skill omitida (${base}): ${motivo}`)
+        omitidas.push({
+          id: base,
+          motivo,
+          ruta: join(raizSkills, nombreArchivo),
+        })
         continue
       }
       const rutaArchivo = join(raizSkills, nombreArchivo)
-      const skill = leerSkillArchivo(rutaArchivo, base, topeBytes, avisos)
+      const skill = leerSkillArchivo(
+        rutaArchivo,
+        base,
+        topeBytes,
+        false,
+        avisos,
+        omitidas,
+      )
       if (skill) {
         skills.push(skill)
         vistos.add(base)
       }
     }
-  } catch {
-    return { skills: [], avisos: [] }
+  } catch (err) {
+    if (err instanceof ErrorSkillExcedida) {
+      throw err
+    }
+    return { skills: [], avisos: [], omitidas: [] }
   }
 
-  return { skills, avisos }
+  return { skills, avisos, omitidas }
 }
 
 export function obtenerSkillsVisibles(
-  skills: SkillDescubierta[],
-  reglas: Array<{ accion: string; recurso: string; efecto: string }>,
+  skills: readonly SkillDescubierta[],
+  _reglas: ReadonlyArray<{ accion: string; recurso: string; efecto: string }>,
   evaluador?: (accion: string, recurso: string) => { efecto: string },
 ): SkillDescubierta[] {
-  if (!evaluador) return skills
+  if (!evaluador) return [...skills]
   const visibles: SkillDescubierta[] = []
   for (const skill of skills) {
     const res = evaluador('skill', skill.id)
@@ -216,4 +289,12 @@ export function obtenerSkillsVisibles(
     visibles.push(skill)
   }
   return visibles
+}
+
+export function formatearCatalogoSkills(
+  skills: readonly SkillDescubierta[],
+): string {
+  if (skills.length === 0) return ''
+  const lineas = skills.map((s) => `- ${s.id} (${s.nombre}): ${s.descripcion}`)
+  return `[SKILLS DISPONIBLES]\n${lineas.join('\n')}`
 }

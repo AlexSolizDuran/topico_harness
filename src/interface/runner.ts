@@ -7,13 +7,18 @@ import {
   type DefinicionAgente,
   esAgentePrimario,
 } from '../agents/definiciones.js'
-import { PresupuestoContexto } from '../context/budget.js'
+import {
+  type ConfiguracionUmbralesContexto,
+  type EtapaContexto,
+  PresupuestoContexto,
+} from '../context/budget.js'
 import {
   type MetricasContexto,
   medirContexto,
   type ResumenCompactacion,
 } from '../context/metrics.js'
 import { aplicarPipelineContexto } from '../context/pipeline.js'
+import { podarPasosLectura } from '../context/pruning.js'
 import {
   calcularTokensHistorial,
   estimarTokensTexto,
@@ -21,6 +26,8 @@ import {
 import { recortarSalidasHerramientasViejas } from '../context/trimming.js'
 import type { RegistroHerramientas } from '../core/registry.js'
 import { ejecutarTurno, type PreparacionHistorial } from '../core/turn.js'
+import { ErrorBloqueoHook, type GestorHooks } from '../hooks/ejecutar.js'
+import type { GestorInstrucciones } from '../instructions/cargar-instrucciones.js'
 import {
   GestorPermisos,
   type ManejadorAprobacionCliente,
@@ -50,8 +57,10 @@ import {
   convertirMensajesAHistorial,
   crearEstadoInicial,
   type EstadoSesionVisual,
+  type EstadoSkillVisual,
   finalizarTurnoVisual,
   generarIdVisual,
+  type SkillOmitidaVisual,
 } from './state.js'
 
 export class ErrorTurnoEnCurso extends Error {
@@ -100,6 +109,7 @@ export interface OpcionesSesion {
   esInteractivo?: boolean | undefined
   alActualizar?: ((estado: EstadoSesionVisual) => void) | undefined
   ventanaContexto?: number | undefined
+  umbralesContexto?: ConfiguracionUmbralesContexto | undefined
   credencialesSanitizar?: string[] | undefined
   modelosDisponibles?: string[] | undefined
   modeloActivo?: string | undefined
@@ -115,7 +125,12 @@ export interface OpcionesSesion {
   gestorTareas?: GestorTareasBackground | undefined
   instruccionesProyecto?: string | undefined
   tokensSistemaInstrucciones?: number | undefined
-  skills?: Array<{ id: string; nombre: string; descripcion: string }> | undefined
+  gestorInstrucciones?: GestorInstrucciones | undefined
+  skills?: EstadoSkillVisual[] | undefined
+  skillsOmitidas?: SkillOmitidaVisual[] | undefined
+  avisosIniciales?: string[] | undefined
+  gestorHooks?: GestorHooks | undefined
+  sessionStartPendiente?: boolean | undefined
 }
 
 /**
@@ -146,6 +161,7 @@ export class SesionInteractiva {
   private alActualizar?: ((estado: EstadoSesionVisual) => void) | undefined
   private presupuesto: PresupuestoContexto
   private ventanaContexto: number
+  private umbralesContexto?: ConfiguracionUmbralesContexto | undefined
   private credencialesSanitizar: string[]
   private modelosDisponibles: string[]
   private modeloActivo: string
@@ -154,17 +170,25 @@ export class SesionInteractiva {
   private ultimoEstadoTurno?: EstadoTurno | undefined
   private tokensAcumulados = 0
   private ultimaCompactacion?: ResumenCompactacion | undefined
+  private ultimaEtapaContexto?: EtapaContexto | undefined
+  private ultimosTokensRecuperados?: number | undefined
+  private umbralesAvisadosTurno = new Set<string>()
   private metricas: MetricasContexto
   private promptSistemaBase: string
   private instruccionesProyecto: string
   private tokensSistemaInstrucciones = 0
+  private gestorInstrucciones?: GestorInstrucciones | undefined
   private anunciosSkills: string[] = []
-  private skillsListado: Array<{ id: string; nombre: string; descripcion: string }> = []
+  private skillsListado: EstadoSkillVisual[] = []
+  private skillsOmitidas: SkillOmitidaVisual[] = []
   private agentes: DefinicionAgente[]
   private agentesExplicito: boolean
   private agenteActivo: string
   private gestorPermisos: GestorPermisos
   private porteroExterno?: PorteroPermisos | undefined
+  private gestorHooks?: GestorHooks | undefined
+  private sessionStartPendiente: boolean
+  private sessionEndEjecutado = false
   private almacen?: AlmacenSesiones | undefined
   private sesion?: SesionMetadata | undefined
   private gestorTareas?: GestorTareasBackground | undefined
@@ -177,8 +201,10 @@ export class SesionInteractiva {
     this.proveedor = opciones.proveedor
     this.registro = opciones.registro
     this.ventanaContexto = opciones.ventanaContexto ?? 128000
+    this.umbralesContexto = opciones.umbralesContexto
     this.presupuesto = new PresupuestoContexto({
       ventanaContexto: this.ventanaContexto,
+      umbrales: this.umbralesContexto,
     })
     this.credencialesSanitizar = opciones.credencialesSanitizar ?? []
     this.modelosDisponibles = opciones.modelosDisponibles ?? []
@@ -189,12 +215,23 @@ export class SesionInteractiva {
         : '')
     this.fabricaProveedor = opciones.fabricaProveedor
     this.promptSistemaBase = opciones.promptSistema ?? ''
-    this.instruccionesProyecto = opciones.instruccionesProyecto ?? ''
-    this.tokensSistemaInstrucciones = opciones.tokensSistemaInstrucciones ?? 0
-    this.skillsListado = opciones.skills ?? []
-    this.anunciosSkills = this.skillsListado.map(
-      (s) => `- skill:${s.id} | ${s.nombre} | ${s.descripcion}`,
-    )
+    this.gestorInstrucciones = opciones.gestorInstrucciones
+    this.instruccionesProyecto =
+      opciones.instruccionesProyecto ??
+      this.gestorInstrucciones?.obtenerContenido() ??
+      ''
+    this.tokensSistemaInstrucciones =
+      opciones.tokensSistemaInstrucciones ??
+      (this.instruccionesProyecto
+        ? estimarTokensTexto(this.instruccionesProyecto)
+        : 0)
+    this.skillsListado = (opciones.skills ?? []).map((s) => ({
+      ...s,
+      cargada: Boolean(s.cargada),
+    }))
+    this.skillsOmitidas = opciones.skillsOmitidas
+      ? [...opciones.skillsOmitidas]
+      : []
     this.agentesExplicito = Boolean(opciones.agentes)
     this.agentes =
       opciones.agentes && opciones.agentes.length > 0
@@ -230,6 +267,10 @@ export class SesionInteractiva {
         ((solicitud, senal) => this.esperarDecisionUsuario(solicitud, senal)),
     })
 
+    this.gestorHooks = opciones.gestorHooks
+    this.sessionStartPendiente = Boolean(opciones.sessionStartPendiente)
+
+    this.recalcularAnunciosSkills()
     this.metricas = this.calcularMetricas(false)
     this.estado = crearEstadoInicial(
       this.componerPromptEfectivo(definicionActiva),
@@ -241,9 +282,16 @@ export class SesionInteractiva {
           ? convertirMensajesAHistorial(this.mensajesHistorial)
           : undefined,
         sesionId: this.sesion?.id,
+        skills: this.obtenerSkillsVisiblesEstado(),
+        skillsOmitidas: this.skillsOmitidas,
       },
     )
     this.avisarSesionInicial(opciones.sesionInicial, errorSesion)
+    if (opciones.avisosIniciales) {
+      for (const aviso of opciones.avisosIniciales) {
+        this.agregarAviso(this.limpiar(aviso))
+      }
+    }
     this.alActualizar = opciones.alActualizar
     this.gestorTareas = opciones.gestorTareas
     this.gestorTareas?.establecerObservador((tareas) => {
@@ -254,6 +302,50 @@ export class SesionInteractiva {
       this.estado = { ...this.estado, tareasBackground: enCurso }
       this.notificar()
     })
+  }
+
+  private obtenerPorteroActivo(): PorteroPermisos {
+    return this.porteroExterno ?? this.gestorPermisos
+  }
+
+  private obtenerSkillsVisiblesEstado(): EstadoSkillVisual[] {
+    const portero = this.obtenerPorteroActivo()
+    return this.skillsListado.filter(
+      (s) =>
+        portero.evaluar(
+          {
+            nombre: 'skill',
+            accionPermiso: 'skill',
+            obtenerRecurso: () => s.id,
+          },
+          { id: s.id },
+        ).efecto !== 'denegar',
+    )
+  }
+
+  private recalcularAnunciosSkills(): void {
+    const visibles = this.obtenerSkillsVisiblesEstado()
+    this.anunciosSkills = visibles.map(
+      (s) => `- skill:${s.id} | ${s.nombre} | ${s.descripcion}`,
+    )
+  }
+
+  marcarSkillCargada(id: string): void {
+    let modificada = false
+    this.skillsListado = this.skillsListado.map((s) => {
+      if (s.id === id && !s.cargada) {
+        modificada = true
+        return { ...s, cargada: true }
+      }
+      return s
+    })
+    if (modificada) {
+      this.estado = {
+        ...this.estado,
+        skills: this.obtenerSkillsVisiblesEstado(),
+      }
+      this.notificar()
+    }
   }
 
   private restaurarDesdeSesion(cargada: SesionCargada): void {
@@ -315,15 +407,76 @@ export class SesionInteractiva {
     return partes.join('\n\n')
   }
 
+  /**
+   * Devuelve el prompt base actual del padre (incluyendo las instrucciones
+   * de proyecto ya cargadas y el catálogo de skills visibles) para que un
+   * subagente herede ese contexto sin cargar instrucciones por su cuenta.
+   */
+  obtenerPromptBaseParaSubagente(): string | undefined {
+    const partes: string[] = []
+    if (this.promptSistemaBase) partes.push(this.promptSistemaBase)
+    if (this.instruccionesProyecto) partes.push(this.instruccionesProyecto)
+    if (this.anunciosSkills.length > 0) {
+      partes.push(`Skills disponibles:\n${this.anunciosSkills.join('\n')}`)
+    }
+    const unido = partes.join('\n\n')
+    return unido || undefined
+  }
+
+  private manejarRutasExploradas(
+    rutas: readonly string[],
+    agente: DefinicionAgente | undefined,
+  ): {
+    cargadas: Array<{
+      rutaRelativa: string
+      tamanioBytes: number
+      tokens: number
+    }>
+    errores: string[]
+  } {
+    if (!this.gestorInstrucciones) {
+      return { cargadas: [], errores: [] }
+    }
+    const res = this.gestorInstrucciones.explorarRutas(rutas)
+    if (res.cargadas.length > 0) {
+      this.instruccionesProyecto = this.gestorInstrucciones.obtenerContenido()
+      this.tokensSistemaInstrucciones = estimarTokensTexto(
+        this.instruccionesProyecto,
+      )
+      this.estado = {
+        ...this.estado,
+        promptSistema: this.componerPromptEfectivo(agente),
+      }
+      this.actualizarMetricas()
+    }
+    return res
+  }
+
   private esperarDecisionUsuario(
-    _solicitud: SolicitudAprobacion,
+    solicitud: SolicitudAprobacion,
     senal?: AbortSignal,
   ): Promise<DecisionAprobacion> {
     return new Promise<DecisionAprobacion>((resolve) => {
+      const pusoEsperaPropia = !this.estado.esperandoAprobacion
+      if (pusoEsperaPropia) {
+        this.estado = aplicarEventoTurno(this.estado, {
+          tipo: 'espera_aprobacion',
+          solicitud,
+        })
+        this.notificar()
+      }
       const finalizar = (decision: DecisionAprobacion): void => {
         this.resolverAprobacionActiva = undefined
         if (senal) {
           senal.removeEventListener('abort', alAbortar)
+        }
+        if (pusoEsperaPropia) {
+          this.estado = aplicarEventoTurno(this.estado, {
+            tipo: 'fin_espera_aprobacion',
+            id: solicitud.id,
+            decision,
+          })
+          this.notificar()
         }
         resolve(decision)
       }
@@ -388,18 +541,27 @@ export class SesionInteractiva {
     this.alActualizar = alActualizar
   }
 
-  private calcularMetricas(usarUltimo = true): MetricasContexto {
-    const tokensSkills = this.anunciosSkills.reduce(
+  private calcularTokensSkills(): number {
+    return this.anunciosSkills.reduce(
       (acc, linea) => acc + estimarTokensTexto(linea),
       0,
     )
+  }
+
+  private calcularMetricas(usarUltimo = true): MetricasContexto {
+    const tokensSkills = this.calcularTokensSkills()
     return medirContexto(
       this.presupuesto,
       this.mensajesHistorial,
       usarUltimo ? this.ultimoTokens : undefined,
       this.tokensAcumulados,
       this.ultimaCompactacion,
-      this.tokensSistemaInstrucciones + tokensSkills,
+      {
+        tokensSistema: this.tokensSistemaInstrucciones,
+        tokensSkills,
+        etapaAplicada: this.ultimaEtapaContexto,
+        tokensRecuperados: this.ultimosTokensRecuperados,
+      },
     )
   }
 
@@ -440,6 +602,7 @@ export class SesionInteractiva {
     this.ventanaContexto = resuelto.ventanaContexto ?? this.ventanaContexto
     this.presupuesto = new PresupuestoContexto({
       ventanaContexto: this.ventanaContexto,
+      umbrales: this.umbralesContexto,
     })
     if (resuelto.credencialesSanitizar) {
       this.credencialesSanitizar = resuelto.credencialesSanitizar
@@ -507,10 +670,23 @@ export class SesionInteractiva {
         estimarTokensTexto(texto)
       )
     }
-    return calcularTokensHistorial([
+    const tokensMensajes = calcularTokensHistorial([
       ...this.mensajesHistorial,
       { rol: 'user', contenido: texto },
     ]).tokens
+    return (
+      tokensMensajes +
+      this.tokensSistemaInstrucciones +
+      this.calcularTokensSkills()
+    )
+  }
+
+  private emitirAvisoUmbralUnaVez(porcentaje: number): void {
+    if (this.umbralesAvisadosTurno.has('aviso')) return
+    this.umbralesAvisadosTurno.add('aviso')
+    this.agregarAviso(
+      `Se alcanzó el ${Math.round(porcentaje)}% del presupuesto de contexto.`,
+    )
   }
 
   private procesarContexto(): void {
@@ -526,6 +702,14 @@ export class SesionInteractiva {
     )
     this.mensajesHistorial = resultado.mensajes
     this.ultimoTokens = resultado.ultimoTokens
+    this.ultimaEtapaContexto = resultado.etapaAplicada
+    this.ultimosTokensRecuperados = resultado.tokensRecuperados
+
+    if (resultado.etapaAplicada !== 'ninguna') {
+      this.emitirAvisoUmbralUnaVez(
+        resultado.avisoUmbral ?? resultado.porcentajeUso,
+      )
+    }
 
     if (resultado.compactado) {
       const despues = calcularTokensHistorial(resultado.mensajes)
@@ -555,19 +739,31 @@ export class SesionInteractiva {
 
   private prepararHistorialPaso(mensajes: Mensaje[]): PreparacionHistorial {
     const medicion = calcularTokensHistorial(mensajes)
-    if (!this.presupuesto.estaCercaDelLimite(medicion.tokens)) {
+    if (this.presupuesto.alcanzaUmbral('aviso', medicion.tokens)) {
+      this.emitirAvisoUmbralUnaVez(
+        this.presupuesto.porcentajeSobreLimite(medicion.tokens),
+      )
+    }
+
+    if (!this.presupuesto.alcanzaUmbral('enmascarar', medicion.tokens)) {
       return { mensajes }
     }
 
-    const recortados = recortarSalidasHerramientasViejas(mensajes)
-    const trasRecorte = calcularTokensHistorial(recortados)
-    if (trasRecorte.tokens <= this.presupuesto.limitePresupuesto) {
-      return { mensajes: recortados }
+    let actuales = recortarSalidasHerramientasViejas(mensajes)
+    let trasPaso = calcularTokensHistorial(actuales)
+
+    if (this.presupuesto.alcanzaUmbral('podar', trasPaso.tokens)) {
+      actuales = podarPasosLectura(actuales)
+      trasPaso = calcularTokensHistorial(actuales)
+    }
+
+    if (trasPaso.tokens <= this.presupuesto.limitePresupuesto) {
+      return { mensajes: actuales }
     }
 
     return {
-      mensajes: recortados,
-      error: `El historial de este turno superó el presupuesto (${trasRecorte.tokens} > ${this.presupuesto.limitePresupuesto}). El turno se detuvo antes de enviar una petición que excediera el límite.`,
+      mensajes: actuales,
+      error: `El historial de este turno superó el presupuesto (${trasPaso.tokens} > ${this.presupuesto.limitePresupuesto}). El turno se detuvo antes de enviar una petición que excediera el límite.`,
     }
   }
 
@@ -597,9 +793,40 @@ export class SesionInteractiva {
     return this.proveedor
   }
 
+  async iniciarSesion(): Promise<void> {
+    if (!this.sessionStartPendiente || !this.gestorHooks) return
+    this.sessionStartPendiente = false
+    const res = await this.gestorHooks.ejecutar({ evento: 'sessionStart' })
+    for (const aviso of res.avisos) {
+      this.agregarAviso(this.limpiar(aviso))
+    }
+    if (res.bloqueado) {
+      const motivo =
+        res.mensajeBloqueo ?? 'El arranque fue bloqueado por sessionStart.'
+      this.agregarAviso(this.limpiar(motivo))
+      this.notificar()
+      throw new ErrorBloqueoHook('sessionStart', motivo)
+    }
+    this.notificar()
+  }
+
+  async cerrarSesion(): Promise<void> {
+    if (this.sessionEndEjecutado || !this.gestorHooks) return
+    this.sessionEndEjecutado = true
+    const res = await this.gestorHooks.ejecutar({ evento: 'sessionEnd' })
+    for (const aviso of res.avisos) {
+      this.agregarAviso(this.limpiar(aviso))
+    }
+    this.notificar()
+  }
+
   async enviarMensaje(texto: string): Promise<void> {
     if (this.estado.turnoEnCurso) {
       throw new ErrorTurnoEnCurso()
+    }
+
+    if (this.sessionStartPendiente) {
+      await this.iniciarSesion()
     }
 
     try {
@@ -610,6 +837,7 @@ export class SesionInteractiva {
       return
     }
 
+    this.umbralesAvisadosTurno.clear()
     this.estado.historial.push({
       id: generarIdVisual(),
       tipo: 'usuario',
@@ -685,17 +913,21 @@ export class SesionInteractiva {
     this.controllerActivo = new AbortController()
     const defAgente = this.obtenerDefinicionAgenteActivo()
     this.gestorPermisos.establecerReglasAgente(defAgente?.permisos ?? [])
+    this.recalcularAnunciosSkills()
 
     try {
       const generador = ejecutarTurno({
         proveedor: this.obtenerProveedorDelTurno(defAgente),
         registro: this.obtenerRegistroDelTurno(defAgente),
         mensajes: this.mensajesHistorial,
-        sistema: this.estado.promptSistema || undefined,
+        sistema: () => this.componerPromptEfectivo(defAgente) || undefined,
         senalCancelacion: this.controllerActivo.signal,
         credencialesSanitizar: this.credencialesSanitizar,
         prepararHistorial: (mensajes) => this.prepararHistorialPaso(mensajes),
-        portero: this.porteroExterno ?? this.gestorPermisos,
+        portero: this.obtenerPorteroActivo(),
+        alExplorarRutas: (rutas) =>
+          this.manejarRutasExploradas(rutas, defAgente),
+        hooks: this.gestorHooks,
       })
 
       let iter = await generador.next()
@@ -759,10 +991,14 @@ export class SesionInteractiva {
 
     this.agenteActivo = agente.nombre
     this.gestorPermisos.establecerReglasAgente(agente.permisos ?? [])
+    this.recalcularAnunciosSkills()
+    this.metricas = this.calcularMetricas()
     this.estado = {
       ...this.estado,
       agenteActivo: agente.nombre,
       promptSistema: this.componerPromptEfectivo(agente),
+      contexto: this.metricas,
+      skills: this.obtenerSkillsVisiblesEstado(),
     }
     this.actualizarMetadataSesion({ agente: agente.nombre })
     this.notificar()
@@ -804,6 +1040,7 @@ export class SesionInteractiva {
     this.ventanaContexto = nuevaVentana
     this.presupuesto = new PresupuestoContexto({
       ventanaContexto: nuevaVentana,
+      umbrales: this.umbralesContexto,
     })
     if (resuelto.credencialesSanitizar) {
       this.credencialesSanitizar = resuelto.credencialesSanitizar
@@ -850,13 +1087,19 @@ export class SesionInteractiva {
     this.ultimoTokens = undefined
     this.tokensAcumulados = 0
     this.ultimaCompactacion = undefined
+    this.ultimaEtapaContexto = undefined
+    this.ultimosTokensRecuperados = undefined
     this.metricas = this.calcularMetricas(false)
     this.estado = crearEstadoInicial(
       this.componerPromptEfectivo(this.obtenerDefinicionAgenteActivo()),
       this.modeloActivo,
       this.metricas,
       this.agenteActivo,
-      { sesionId: metadata.id },
+      {
+        sesionId: metadata.id,
+        skills: this.obtenerSkillsVisiblesEstado(),
+        skillsOmitidas: this.skillsOmitidas,
+      },
     )
     this.agregarAviso(`Sesión nueva: ${metadata.id}`)
     this.notificar()
@@ -927,9 +1170,12 @@ export class SesionInteractiva {
       this.gestorPermisos.establecerReglasAgente(guardado.permisos ?? [])
     }
 
+    this.recalcularAnunciosSkills()
     this.ultimoTokens = undefined
     this.tokensAcumulados = 0
     this.ultimaCompactacion = undefined
+    this.ultimaEtapaContexto = undefined
+    this.ultimosTokensRecuperados = undefined
     this.metricas = this.calcularMetricas(false)
     this.estado = crearEstadoInicial(
       this.componerPromptEfectivo(this.obtenerDefinicionAgenteActivo()),
@@ -939,6 +1185,8 @@ export class SesionInteractiva {
       {
         historial: convertirMensajesAHistorial(this.mensajesHistorial),
         sesionId: cargada.metadata.id,
+        skills: this.obtenerSkillsVisiblesEstado(),
+        skillsOmitidas: this.skillsOmitidas,
       },
     )
     this.agregarAviso(aviso)

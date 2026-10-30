@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { EventoHook } from '../types.js'
 
 export class ErrorConfiguracion extends Error {
   constructor(mensaje: string) {
@@ -30,10 +31,35 @@ export interface ConfiguracionSesiones {
   maximo?: number | undefined
 }
 
+export interface DefinicionHookConfig {
+  comando: string
+  match?: string | undefined
+  timeoutMs?: number | undefined
+}
+
+export type ConfiguracionHooks = Partial<
+  Record<EventoHook, DefinicionHookConfig[]>
+>
+
+export interface ConfiguracionUmbrales {
+  aviso?: number | undefined
+  enmascarar?: number | undefined
+  podar?: number | undefined
+  resumir?: number | undefined
+  compactar?: number | undefined
+}
+
+export interface ConfiguracionContexto {
+  umbrales?: ConfiguracionUmbrales | undefined
+}
+
 export interface ConfiguracionHarness {
   proveedorPorDefecto?: string | undefined
   modeloPorDefecto?: string | undefined
   sesiones?: ConfiguracionSesiones | undefined
+  hooks?: ConfiguracionHooks | undefined
+  umbrales?: ConfiguracionUmbrales | undefined
+  contexto?: ConfiguracionContexto | undefined
   proveedores: Record<string, ConfiguracionProveedor>
 }
 
@@ -51,6 +77,14 @@ export interface ModeloResuelto {
 
 const MODELO_POR_DEFECTO = 'modelo-desconocido'
 
+const EVENTOS_HOOK_PERMITIDOS: ReadonlySet<string> = new Set<EventoHook>([
+  'sessionStart',
+  'sessionEnd',
+  'preTool',
+  'postTool',
+  'turnEnd',
+])
+
 /** Ruta del config global, fuera del proyecto para que las herramientas no puedan leerlo. */
 export function rutaConfigGlobal(
   plataforma: NodeJS.Platform = process.platform,
@@ -66,11 +100,6 @@ export function rutaConfigGlobal(
 
 export function rutaConfigProyecto(directorioProyecto: string): string {
   return join(directorioProyecto, '.harness', 'config.json')
-}
-
-function esRutaConfigProyecto(ruta: string, directorioProyecto?: string): boolean {
-  if (!directorioProyecto) return false
-  return ruta === rutaConfigProyecto(directorioProyecto)
 }
 
 function leerConfig(
@@ -239,6 +268,157 @@ function validarProveedor(
   }
 }
 
+function validarEntradaHook(
+  entrada: unknown,
+  evento: string,
+  indice: number,
+  ruta: string,
+): DefinicionHookConfig {
+  const posicion = indice + 1
+  if (
+    !esObjeto(entrada) ||
+    typeof entrada.comando !== 'string' ||
+    entrada.comando.trim().length === 0
+  ) {
+    throw new ErrorConfiguracion(
+      `El hook en '${evento}' (posición ${posicion}) debe declarar un 'comando' válido en ${ruta}`,
+    )
+  }
+
+  if (entrada.match !== undefined) {
+    if (typeof entrada.match !== 'string' || entrada.match.length === 0) {
+      throw new ErrorConfiguracion(
+        `El hook en '${evento}' (posición ${posicion}) declara un 'match' inválido en ${ruta}`,
+      )
+    }
+    try {
+      new RegExp(entrada.match)
+    } catch {
+      throw new ErrorConfiguracion(
+        `El hook en '${evento}' (posición ${posicion}) declara una expresión regular 'match' inválida en ${ruta}`,
+      )
+    }
+  }
+
+  if (
+    entrada.timeoutMs !== undefined &&
+    (typeof entrada.timeoutMs !== 'number' ||
+      !Number.isFinite(entrada.timeoutMs) ||
+      entrada.timeoutMs <= 0)
+  ) {
+    throw new ErrorConfiguracion(
+      `El hook en '${evento}' (posición ${posicion}) declara un 'timeoutMs' inválido en ${ruta}`,
+    )
+  }
+
+  return {
+    comando: entrada.comando,
+    ...(entrada.match !== undefined ? { match: entrada.match } : {}),
+    ...(entrada.timeoutMs !== undefined
+      ? { timeoutMs: entrada.timeoutMs }
+      : {}),
+  }
+}
+
+function validarHooks(valor: unknown, ruta: string): ConfiguracionHooks {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'hooks' debe ser un objeto en ${ruta}`)
+  }
+
+  const hooks: ConfiguracionHooks = {}
+  for (const [evento, lista] of Object.entries(valor)) {
+    if (!EVENTOS_HOOK_PERMITIDOS.has(evento)) {
+      throw new ErrorConfiguracion(
+        `Evento de hook desconocido '${evento}' en ${ruta}. Eventos válidos: sessionStart, sessionEnd, preTool, postTool, turnEnd.`,
+      )
+    }
+    if (!Array.isArray(lista)) {
+      throw new ErrorConfiguracion(
+        `La configuración de hooks para '${evento}' debe ser una lista en ${ruta}`,
+      )
+    }
+    hooks[evento as EventoHook] = lista.map((item, idx) =>
+      validarEntradaHook(item, evento, idx, ruta),
+    )
+  }
+
+  return hooks
+}
+
+function normalizarValorUmbralConfig(
+  valor: unknown,
+  nombre: string,
+  defecto: number,
+  ruta: string,
+): number {
+  if (valor === undefined) return defecto
+  if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) {
+    throw new ErrorConfiguracion(
+      `El umbral '${nombre}' debe ser un número positivo en ${ruta}`,
+    )
+  }
+  const fraccion = valor > 1 ? valor / 100 : valor
+  if (fraccion <= 0 || fraccion > 1) {
+    throw new ErrorConfiguracion(
+      `El umbral '${nombre}' debe estar entre 0 y 100% en ${ruta}`,
+    )
+  }
+  return fraccion
+}
+
+function validarUmbrales(valor: unknown, ruta: string): ConfiguracionUmbrales {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'umbrales' debe ser un objeto en ${ruta}`)
+  }
+
+  const aviso = normalizarValorUmbralConfig(valor.aviso, 'aviso', 0.7, ruta)
+  const enmascarar = normalizarValorUmbralConfig(
+    valor.enmascarar,
+    'enmascarar',
+    0.8,
+    ruta,
+  )
+  const podar = normalizarValorUmbralConfig(valor.podar, 'podar', 0.85, ruta)
+  const resumir = normalizarValorUmbralConfig(
+    valor.resumir,
+    'resumir',
+    0.9,
+    ruta,
+  )
+  const compactar = normalizarValorUmbralConfig(
+    valor.compactar,
+    'compactar',
+    0.99,
+    ruta,
+  )
+
+  if (
+    !(
+      aviso < enmascarar &&
+      enmascarar < podar &&
+      podar < resumir &&
+      resumir < compactar
+    )
+  ) {
+    throw new ErrorConfiguracion(
+      `Los umbrales de contexto deben ser estrictamente crecientes (aviso=${aviso}, enmascarar=${enmascarar}, podar=${podar}, resumir=${resumir}, compactar=${compactar}) en ${ruta}`,
+    )
+  }
+
+  return { aviso, enmascarar, podar, resumir, compactar }
+}
+
+function validarContexto(valor: unknown, ruta: string): ConfiguracionContexto {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'contexto' debe ser un objeto en ${ruta}`)
+  }
+  return {
+    ...(valor.umbrales !== undefined
+      ? { umbrales: validarUmbrales(valor.umbrales, ruta) }
+      : {}),
+  }
+}
+
 function validarConfig(
   datos: unknown,
   ruta: string,
@@ -258,6 +438,15 @@ function validarConfig(
     proveedores[id] = validarProveedor(proveedor, id, ruta, esProyecto)
   }
 
+  const umbralesDirectos =
+    datos.umbrales !== undefined
+      ? validarUmbrales(datos.umbrales, ruta)
+      : undefined
+  const contextoValidado =
+    datos.contexto !== undefined
+      ? validarContexto(datos.contexto, ruta)
+      : undefined
+
   return {
     proveedores,
     ...(typeof datos.proveedorPorDefecto === 'string'
@@ -269,6 +458,11 @@ function validarConfig(
     ...(datos.sesiones !== undefined
       ? { sesiones: validarSesiones(datos.sesiones, ruta) }
       : {}),
+    ...(datos.hooks !== undefined
+      ? { hooks: validarHooks(datos.hooks, ruta) }
+      : {}),
+    ...(umbralesDirectos ? { umbrales: umbralesDirectos } : {}),
+    ...(contextoValidado ? { contexto: contextoValidado } : {}),
   }
 }
 
@@ -297,6 +491,17 @@ function validarSesiones(valor: unknown, ruta: string): ConfiguracionSesiones {
   }
 }
 
+function combinarHooks(
+  globalHooks?: ConfiguracionHooks,
+  proyectoHooks?: ConfiguracionHooks,
+): ConfiguracionHooks | undefined {
+  if (!globalHooks && !proyectoHooks) return undefined
+  return {
+    ...(globalHooks ?? {}),
+    ...(proyectoHooks ?? {}),
+  }
+}
+
 /**
  * Carga el config global y el del proyecto. El del proyecto pisa al global.
  * Un proveedor declarado en el proyecto reemplaza por completo al del global.
@@ -319,6 +524,13 @@ export function cargarConfig(
     )
   }
 
+  const hooksCombinados = combinarHooks(global?.hooks, proyecto?.hooks)
+  const umbralesCombinados =
+    proyecto?.umbrales ??
+    proyecto?.contexto?.umbrales ??
+    global?.umbrales ??
+    global?.contexto?.umbrales
+
   return {
     proveedores: {
       ...(global?.proveedores ?? {}),
@@ -338,6 +550,13 @@ export function cargarConfig(
       : {}),
     ...(proyecto?.sesiones || global?.sesiones
       ? { sesiones: { ...global?.sesiones, ...proyecto?.sesiones } }
+      : {}),
+    ...(hooksCombinados ? { hooks: hooksCombinados } : {}),
+    ...(umbralesCombinados
+      ? {
+          umbrales: umbralesCombinados,
+          contexto: { umbrales: umbralesCombinados },
+        }
       : {}),
   }
 }

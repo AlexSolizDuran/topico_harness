@@ -11,7 +11,9 @@ import type { ComandoUi } from './commands.js'
 import type {
   ElementoVisual,
   EstadoSesionVisual,
+  EstadoSkillVisual,
   HerramientaEnCurso,
+  SkillOmitidaVisual,
 } from './state.js'
 
 export function formatearTokens(tokens: number): string {
@@ -39,11 +41,6 @@ export function resumirArgumentos(
   )
   const resumen = partes.join(' ')
   return resumen.length > 80 ? `${resumen.slice(0, 79)}…` : resumen
-}
-
-function acortarRuta(ruta: string): string {
-  if (ruta.length <= 42) return ruta
-  return `…${ruta.slice(-41)}`
 }
 
 export const MensajeUsuario: React.FC<{ texto: string }> = ({ texto }) => (
@@ -316,6 +313,20 @@ export const PanelContexto: React.FC<{ metricas: MetricasContexto }> = ({
       <Text>
         Consumo acumulado: {formatearTokens(metricas.tokensAcumulados)} tokens
       </Text>
+      {metricas.tokensSkills !== undefined && metricas.tokensSkills > 0 ? (
+        <Text>
+          Catálogo de skills: {formatearTokens(metricas.tokensSkills)} tokens
+        </Text>
+      ) : null}
+      {metricas.etapaAplicada && metricas.etapaAplicada !== 'ninguna' ? (
+        <Text>
+          Etapa aplicada: {metricas.etapaAplicada}
+          {metricas.tokensRecuperados !== undefined &&
+          metricas.tokensRecuperados > 0
+            ? ` (${formatearTokens(metricas.tokensRecuperados)} tokens recuperados)`
+            : ''}
+        </Text>
+      ) : null}
       {compactacion ? (
         <Text>
           Última compactación: {formatearTokens(compactacion.antesTokens)} →{' '}
@@ -405,8 +416,9 @@ export const PanelSesiones: React.FC<{
 )
 
 export const PanelSkills: React.FC<{
-  skills?: Array<{ id: string; nombre: string; descripcion: string }>
-}> = ({ skills = [] }) => (
+  skills?: readonly EstadoSkillVisual[] | undefined
+  omitidas?: readonly SkillOmitidaVisual[] | undefined
+}> = ({ skills = [], omitidas = [] }) => (
   <Box
     flexDirection="column"
     borderStyle="round"
@@ -421,17 +433,33 @@ export const PanelSkills: React.FC<{
       <>
         <Text color="gray">Sin skills descubiertas</Text>
         <Text color="gray">
-          Colocá .opencode/skills/&lt;id&gt;/SKILL.md o .opencode/skills/&lt;id&gt;.md
+          Colocá .opencode/skills/&lt;id&gt;/SKILL.md o
+          .opencode/skills/&lt;id&gt;.md
         </Text>
       </>
     ) : (
       skills.map((skill) => (
         <Text key={skill.id}>
           <Text bold>skill:{skill.id}</Text> · {skill.nombre} ·{' '}
-          <Text color="gray">{skill.descripcion}</Text>
+          <Text color={skill.cargada ? 'green' : 'yellow'}>
+            {skill.cargada ? 'cargada' : 'disponible'}
+          </Text>{' '}
+          · <Text color="gray">{skill.descripcion}</Text>
         </Text>
       ))
     )}
+    {omitidas.length > 0 ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold color="yellow">
+          Skills omitidas
+        </Text>
+        {omitidas.map((om) => (
+          <Text key={om.id} color="yellow">
+            ! {om.id}: {om.motivo}
+          </Text>
+        ))}
+      </Box>
+    ) : null}
     <Text color="gray">Esc cierra este panel</Text>
   </Box>
 )

@@ -7,7 +7,9 @@ import {
   BarraEstado,
   CajaEntrada,
   PaletaComandos,
+  PanelAyuda,
   PanelContexto,
+  PanelSkills,
   SelectorModelo,
   TarjetaHerramienta,
 } from '../../src/interface/app.js'
@@ -177,5 +179,57 @@ describe('TUI', () => {
 
     expect(salida).toContain('Última compactación: 1.0k → 500')
     expect(salida).toContain('10 → 5 mensajes')
+  })
+
+  it('PanelSkills muestra el catálogo, estado de carga y skills omitidas', () => {
+    const salida = renderToString(
+      <PanelSkills
+        skills={[
+          {
+            id: 'git-release',
+            nombre: 'Git Release',
+            descripcion: 'Publica release',
+            cargada: true,
+          },
+          {
+            id: 'revisar-pr',
+            nombre: 'Revisar PR',
+            descripcion: 'Revisa PR',
+            cargada: false,
+          },
+        ]}
+        omitidas={[{ id: 'rota', motivo: 'falta description' }]}
+      />,
+    )
+
+    expect(salida).toContain('skill:git-release')
+    expect(salida).toContain('cargada')
+    expect(salida).toContain('skill:revisar-pr')
+    expect(salida).toContain('disponible')
+    expect(salida).toContain('rota: falta description')
+  })
+
+  it('PanelContexto muestra costo de skills, etapa aplicada y tokens recuperados, y PanelAyuda lista /skills', () => {
+    const presupuesto = new PresupuestoContexto({ ventanaContexto: 2000 })
+    const metricas = medirContexto(
+      presupuesto,
+      [{ rol: 'user', contenido: 'x'.repeat(400) }],
+      undefined,
+      0,
+      undefined,
+      {
+        tokensSkills: 45,
+        etapaAplicada: 'enmascarar',
+        tokensRecuperados: 320,
+      },
+    )
+
+    const salidaCtx = renderToString(<PanelContexto metricas={metricas} />)
+    expect(salidaCtx).toContain('Catálogo de skills: 45 tokens')
+    expect(salidaCtx).toContain('Etapa aplicada: enmascarar')
+    expect(salidaCtx).toContain('320 tokens recuperados')
+
+    const salidaAyuda = renderToString(<PanelAyuda />)
+    expect(salidaAyuda).toContain('/skills')
   })
 })

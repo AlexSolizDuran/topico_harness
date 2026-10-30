@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type {
   ConteoTokens,
@@ -5,6 +8,9 @@ import type {
   Proveedor,
 } from '../../src/provider/index.js'
 import {
+  cargarConfig,
+  credencialDeProveedor,
+  ErrorConfiguracion,
   ErrorCredencial,
   ErrorProveedor,
   ejecutarConReintentos,
@@ -322,6 +328,100 @@ describe('provider Specification Tests', () => {
           // consumo
         }
       }).rejects.toThrow(ErrorCredencial)
+    })
+
+    it('El config del proyecto rechaza la clave literal', () => {
+      // WHEN .harness/config.json del proyecto declara apiKey en un proveedor
+      const dir = mkdtempSync(join(tmpdir(), 'harness-cfg-proy-'))
+      try {
+        mkdirSync(join(dir, '.harness'), { recursive: true })
+        const secretoLiteral = 'sk-or-v1-secreto-prohibido-999'
+        writeFileSync(
+          join(dir, '.harness', 'config.json'),
+          JSON.stringify({
+            proveedores: {
+              openrouter: {
+                tipo: 'openai-compatible',
+                baseUrl: 'https://openrouter.ai/api/v1',
+                apiKey: secretoLiteral,
+                modelos: [{ id: 'gpt-4o' }],
+              },
+            },
+          }),
+        )
+
+        // THEN el arranque falla indicando que debe usarse variableApiKey con .env, sin mostrar el valor de la clave
+        try {
+          cargarConfig({
+            directorioProyecto: dir,
+            directorioGlobal: join(dir, 'no-existe.json'),
+          })
+          expect.unreachable('Debió rechazar apiKey literal en el proyecto')
+        } catch (error) {
+          expect(error).toBeInstanceOf(ErrorConfiguracion)
+          const msg = (error as Error).message
+          expect(msg).toContain('variableApiKey')
+          expect(msg).toContain('.env')
+          expect(msg).not.toContain(secretoLiteral)
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('El config global admite la clave literal', () => {
+      // WHEN el archivo de configuración global del usuario declara apiKey
+      const dir = mkdtempSync(join(tmpdir(), 'harness-cfg-global-'))
+      try {
+        const rutaGlobal = join(dir, 'global-config.json')
+        writeFileSync(
+          rutaGlobal,
+          JSON.stringify({
+            proveedores: {
+              openrouter: {
+                tipo: 'openai-compatible',
+                baseUrl: 'https://openrouter.ai/api/v1',
+                apiKey: 'sk-global-key-1234',
+                modelos: [{ id: 'gpt-4o' }],
+              },
+            },
+          }),
+        )
+
+        // THEN el sistema la acepta sin error
+        const cfg = cargarConfig({
+          directorioProyecto: dir,
+          directorioGlobal: rutaGlobal,
+        })
+        const prov = cfg.proveedores.openrouter
+        expect(prov).toBeDefined()
+        if (prov) {
+          expect(credencialDeProveedor(prov, {})).toBe('sk-global-key-1234')
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('Falta la variable declarada en el config', () => {
+      // WHEN el proveedor declara variableApiKey y la variable no está en el entorno ni en .env
+      const proveedorCfg = {
+        tipo: 'openai-compatible',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        variableApiKey: 'OPENROUTER_API_KEY',
+        modelos: [{ id: 'gpt-4o' }],
+      }
+
+      // THEN el sistema informa qué variable falta y que puede definirse en .env
+      try {
+        credencialDeProveedor(proveedorCfg, {})
+        expect.unreachable('Debió fallar por falta de variableApiKey')
+      } catch (error) {
+        expect(error).toBeInstanceOf(ErrorConfiguracion)
+        const msg = (error as Error).message
+        expect(msg).toContain('OPENROUTER_API_KEY')
+        expect(msg).toContain('.env')
+      }
     })
   })
 

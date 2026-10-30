@@ -518,6 +518,7 @@ export function crearHerramientaParche(
       const rutas = rutasDelParche(String(args.patch ?? ''))
       return rutas.length > 0 ? rutas : '*'
     },
+    rutasExploradas: (args) => rutasDelParche(String(args.patch ?? '')),
     motivoAprobacionObligatoria: (args) => {
       for (const ruta of rutasDelParche(String(args.patch ?? ''))) {
         const motivo = motivoAprobacionRuta(ruta, directorioProyecto)

@@ -95,9 +95,12 @@ async function ejecutarPedido(
     const { renderizarInteractivo } = await import('./interface/render.js')
     const instancia = renderizarInteractivo(sesion, { directorio })
     await instancia.waitUntilExit()
+    await sesion.cerrarSesion()
   } else if (pedido) {
     await ejecutarEnPlano(sesion, pedido)
+    await sesion.cerrarSesion()
   } else {
+    await sesion.cerrarSesion()
     process.stderr.write(
       'No se recibió ningún pedido. Usá --help para ver las opciones.\n',
     )

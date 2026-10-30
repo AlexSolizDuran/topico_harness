@@ -1,5 +1,5 @@
 import type { ConteoTokens, Mensaje } from '../types.js'
-import type { PresupuestoContexto } from './budget.js'
+import type { EtapaContexto, PresupuestoContexto } from './budget.js'
 import { calcularTokensHistorial } from './tokens.js'
 
 export interface ResumenCompactacion {
@@ -7,6 +7,13 @@ export interface ResumenCompactacion {
   despuesTokens: number
   antesMensajes: number
   despuesMensajes: number
+}
+
+export interface OpcionesMedicionContexto {
+  tokensSistema?: number | undefined
+  tokensSkills?: number | undefined
+  etapaAplicada?: EtapaContexto | undefined
+  tokensRecuperados?: number | undefined
 }
 
 export interface MetricasContexto {
@@ -21,6 +28,9 @@ export interface MetricasContexto {
   tokensAcumulados: number
   ultimaCompactacion?: ResumenCompactacion | undefined
   tokensSistema?: number | undefined
+  tokensSkills?: number | undefined
+  etapaAplicada?: EtapaContexto | undefined
+  tokensRecuperados?: number | undefined
 }
 
 export function crearMetricasVacias(): MetricasContexto {
@@ -43,11 +53,17 @@ export function medirContexto(
   ultimoTokens?: ConteoTokens | undefined,
   tokensAcumulados = 0,
   ultimaCompactacion?: ResumenCompactacion | undefined,
-  tokensSistema = 0,
+  tokensSistemaOpciones: number | OpcionesMedicionContexto = 0,
 ): MetricasContexto {
+  const opciones: OpcionesMedicionContexto =
+    typeof tokensSistemaOpciones === 'number'
+      ? { tokensSistema: tokensSistemaOpciones }
+      : tokensSistemaOpciones
+  const tokensSistema = opciones.tokensSistema ?? 0
+  const tokensSkills = opciones.tokensSkills ?? 0
   const medicion = calcularTokensHistorial(mensajes, ultimoTokens)
   const tokensActuales = medicion.esEstimado
-    ? medicion.tokens + tokensSistema
+    ? medicion.tokens + tokensSistema + tokensSkills
     : medicion.tokens
   const disponible = Math.max(0, presupuesto.limitePresupuesto - tokensActuales)
   const porcentajeUso =
@@ -67,5 +83,12 @@ export function medirContexto(
     tokensAcumulados,
     ultimaCompactacion,
     ...(tokensSistema > 0 ? { tokensSistema } : {}),
+    ...(tokensSkills > 0 ? { tokensSkills } : {}),
+    ...(opciones.etapaAplicada
+      ? { etapaAplicada: opciones.etapaAplicada }
+      : {}),
+    ...(opciones.tokensRecuperados !== undefined
+      ? { tokensRecuperados: opciones.tokensRecuperados }
+      : {}),
   }
 }

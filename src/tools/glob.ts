@@ -38,6 +38,35 @@ function evaluarEntradaGlob(
   return undefined
 }
 
+export function extraerPrefijoDirectorioGlob(patron: string): string[] {
+  const normalizado = patron
+    .replace(/\\/g, '/')
+    .replace(/^(?:\.\/)+/, '')
+    .trim()
+  if (!normalizado || normalizado.startsWith('..')) return []
+
+  const partes = normalizado.split('/').filter(Boolean)
+  const prefijo: string[] = []
+  for (let i = 0; i < partes.length; i++) {
+    const segmento = partes[i]
+    if (!segmento || segmento === '.') continue
+    if (segmento === '..') return []
+    if (/[*?[\]{}]/.test(segmento)) break
+    // Si es el último segmento y no termina en barra pero parece un nombre de archivo con extensión, paramos antes
+    if (
+      i === partes.length - 1 &&
+      !normalizado.endsWith('/') &&
+      segmento.includes('.')
+    ) {
+      break
+    }
+    prefijo.push(segmento)
+  }
+
+  if (prefijo.length === 0) return []
+  return [prefijo.join('/')]
+}
+
 export function crearHerramientaGlob(
   directorioProyecto: string = process.cwd(),
 ): EntradaHerramienta {
@@ -57,6 +86,8 @@ export function crearHerramientaGlob(
     },
     accionPermiso: 'glob',
     obtenerRecurso: (args) => String(args.patron ?? '*'),
+    rutasExploradas: (args) =>
+      extraerPrefijoDirectorioGlob(String(args.patron ?? '')),
     admiteParalelo: true,
     ejecutar: async (args) => {
       const patron = String(args.patron ?? '')

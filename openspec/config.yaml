@@ -10,14 +10,16 @@ context: |
     contexto y se cancela a mitad de tarea.
     El modelo es el motor. El harness es el chasis.
 
-  ALCANCE IMPLEMENTADO: niveles 0 al 3
+  ALCANCE IMPLEMENTADO: niveles 0 al 8
     0  One-shot. Una llamada al provider. Descarta problemas falsos.
     1  El loop y las herramientas.
     2  Gestion de contexto: presupuesto, recorte, compactacion.
-    3  Subagentes con contexto aislado.
-    Ademas: agentes primarios, permisos, aprobaciones, tandas, persistencia de
-    sesiones y ramas (changes 150 a 250).
-    Fuera de alcance: hooks, sandbox, LSP, MCP, memoria.
+    3  Subagentes con contexto aislado y tareas en background.
+    6  Contexto fino en 5 etapas (aviso, enmascarar, podar, resumir, compactar).
+    7  Permisos declarativos, aprobaciones obligatorias y hooks de ciclo de vida.
+    8  Instrucciones del proyecto (AGENTS.md raiz + anidados) y skills bajo demanda.
+    Ademas: agentes primarios, tandas paralelas, persistencia de sesiones y ramas.
+    Fuera de alcance: sandbox, LSP, MCP, memoria persistente entre sesiones.
     La escalera completa esta documentada en `alcance/`, que es referencia de
     razonamiento y no contrato. El contrato vive en `openspec/specs/`.
 
@@ -26,7 +28,7 @@ context: |
     Ink 7.1.1 con React 19 para la interfaz de terminal.
     Biome para lint y formato. Vitest para pruebas.
     Sin base de datos en ningun nivel. El estado vive en memoria durante el
-    turno; cuando aparezca persistencia sera JSONL en `.harness/`.
+    turno; la persistencia es JSONL en `.harness/`.
 
   PLATAFORMAS: Linux, macOS y Windows
     Las tres se prueban en CI. En Windows la interfaz degrada a salida linea a
@@ -39,8 +41,8 @@ context: |
     libreria o un algoritmo, esta mal escrito.
 
   CONVENCIONES DE LOS SPECS
-    Carpetas en ingles: core, provider, tools, context, interface, agents,
-    subagents, permissions.
+    Carpetas en ingles: core, provider, tools, context, interface, sesiones,
+    agents, subagents, permissions, instructions, skills, hooks.
     Texto de los requisitos en espanol. Los marcadores estructurales van en
     ingles porque el CLI los parsea: `## Purpose`, `## Requirements`,
     `### Requirement:`, `#### Scenario:`. Las palabras clave tambien:
@@ -67,8 +69,7 @@ context: |
     WINDOWS USA POWERSHELL. No hay lista negra en Windows: borrar tiene nueve
     alias distintos (del, erase, rd, ri, rm, rmdir, rni, rmir, rp) y ademas se
     puede llamar como metodo .NET. El catalogo es explicito y la composicion pide
-    aprobacion obligatoria. El camino esta cubierto por tests unitarios, pero no
-    corrio en CI sobre Windows.
+    aprobacion obligatoria.
 
     UNIX, lista negra: rm, rmdir, unlink, shred, mkfs, dd, chmod, chown, chgrp,
     sudo, su, doas, mount, umount, kill, killall, pkill, shutdown, reboot, halt,
@@ -85,39 +86,28 @@ context: |
     editar el spec.
 
   FLUJO DE ESTE REPO
-    `openspec/specs/` es el contrato acordado: 9 capacidades, 113 requisitos y
-    356 escenarios. Los 25 changes de `openspec/changes/archive/` ya lo implementaron.
+    `openspec/specs/` es el contrato acordado: 12 capacidades, 138 requisitos y
+    456 escenarios. Los 31 changes de `openspec/changes/archive/` ya lo implementaron.
     Los changes IMPLEMENTAN contra esos requisitos, no los vuelven a derivar. Al
     proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
-    Los changes que solo materializan comportamiento ya especificado declaran
-    `skip_specs: true` en su `.openspec.yaml` (010 a 050, 070, 080, 090 y 110).
-    Los que ajustan el contrato traen deltas de spec (060, 100, 120, 130, 140,
-    150, 160, 170, 180, 190, 200, 210, 220, 230, 240 y 250).
 
   ESTADO
-    9 capacidades, 113 requisitos, 356 escenarios. Todo validado contra el schema
+    12 capacidades, 138 requisitos, 456 escenarios. Todo validado contra el schema
     `spec-driven`.
-    core (12) · provider (7) · tools (21) · context (10) · interface (22) · sesiones (11) · agents (6) · subagents (15) · permissions (9)
-    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 406 tests
+    core (12) · provider (8) · tools (21) · context (14) · interface (22) · sesiones (11) · agents (6) · subagents (15) · permissions (9) · instructions (8) · skills (6) · hooks (6)
+    IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 462 tests
     y `npm run build` genera `dist/main.js`. La prueba de punta a punta contra
     OpenRouter paso en modo plano, con lectura real de archivos y cambio de
     modelo por `--modelo`.
-    Deuda de verificacion: el camino de Windows (PowerShell y allowlist) esta
-    cubierto por tests unitarios, pero no corrio en CI sobre Windows.
 
     El provider concreto es OpenRouter por su API compatible con OpenAI; Ollama
-    queda como alternativa local. La interfaz sigue siendo agnostica: el
-    adaptador vive en `src/provider/adapters/` y el nucleo no lo importa.
+    queda como alternativa local. La credencial se lee desde `.env` mediante
+    `variableApiKey`, y `.harness/config.json` del proyecto se versiona sin secretos.
+    La interfaz sigue siendo agnostica: el adaptador vive en `src/provider/adapters/`
+    y el nucleo no lo importa.
 
     Reintentos: 3 intentos como maximo, espera inicial de 500 ms y factor 2
     (`src/provider/retry.ts`); el spec acota el numero sin fijar la cifra. La v1
     no tiene motor de busqueda de subagentes: se eligen por nombre entre los
     declarados.
-
-# Reglas por artefacto (opcional)
-# rules:
-#   proposal:
-#     - Mantener las propuestas por debajo de 500 palabras
-#   tasks:
-#     - Dividir las tareas en bloques de maximo 2 horas

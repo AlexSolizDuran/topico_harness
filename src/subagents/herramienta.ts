@@ -8,7 +8,7 @@ import type {
   RegistroHerramientas,
 } from '../core/registry.js'
 import type { Proveedor } from '../provider/types.js'
-import type { PorteroPermisos } from '../types.js'
+import type { EjecutorHooks, PorteroPermisos } from '../types.js'
 import type { GestorTareasBackground } from './background.js'
 import {
   ejecutarTurnoSubagente,
@@ -28,6 +28,12 @@ export interface OpcionesHerramientaDelegacion {
   obtenerCredenciales?: (() => string[]) | undefined
   crearPorteroSubagente?:
     | ((subagente: DefinicionAgente) => PorteroPermisos | undefined)
+    | undefined
+  crearHooksSubagente?:
+    | ((
+        subagente: DefinicionAgente,
+        portero?: PorteroPermisos | undefined,
+      ) => EjecutorHooks | undefined)
     | undefined
   gestorTareas?: GestorTareasBackground | undefined
   enTurnoHijo?: boolean | undefined
@@ -129,6 +135,7 @@ export function crearHerramientaDelegacion(
     pedido: string,
     senal?: AbortSignal,
   ): Promise<string> => {
+    const porteroHijo = opciones.crearPorteroSubagente?.(subagente)
     const resultado = await ejecutarTurnoSubagente({
       subagente,
       pedido,
@@ -141,7 +148,8 @@ export function crearHerramientaDelegacion(
       maximoContenido: opciones.maximoContenido,
       credencialesSanitizar: opciones.obtenerCredenciales?.(),
       senalCancelacionPadre: senal,
-      portero: opciones.crearPorteroSubagente?.(subagente),
+      portero: porteroHijo,
+      hooks: opciones.crearHooksSubagente?.(subagente, porteroHijo),
     })
     return resultado.salida
   }

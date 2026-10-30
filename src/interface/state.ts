@@ -44,6 +44,18 @@ export type ElementoVisual =
     }
   | { id: string; tipo: 'aviso'; texto: string }
 
+export interface EstadoSkillVisual {
+  id: string
+  nombre: string
+  descripcion: string
+  cargada?: boolean | undefined
+}
+
+export interface SkillOmitidaVisual {
+  id: string
+  motivo: string
+}
+
 export interface EstadoSesionVisual {
   promptSistema: string
   historial: ElementoVisual[]
@@ -59,6 +71,8 @@ export interface EstadoSesionVisual {
   herramientaEnCurso?: HerramientaEnCurso | undefined
   herramientasEnCurso: HerramientaEnCurso[]
   tareasBackground?: number | undefined
+  skills?: EstadoSkillVisual[] | undefined
+  skillsOmitidas?: SkillOmitidaVisual[] | undefined
 }
 
 export function crearEstadoInicial(
@@ -69,6 +83,8 @@ export function crearEstadoInicial(
   extras: {
     historial?: ElementoVisual[] | undefined
     sesionId?: string | undefined
+    skills?: EstadoSkillVisual[] | undefined
+    skillsOmitidas?: SkillOmitidaVisual[] | undefined
   } = {},
 ): EstadoSesionVisual {
   return {
@@ -83,6 +99,10 @@ export function crearEstadoInicial(
     ...(extras.sesionId ? { sesionId: extras.sesionId } : {}),
     contexto,
     herramientasEnCurso: [],
+    ...(extras.skills ? { skills: [...extras.skills] } : {}),
+    ...(extras.skillsOmitidas
+      ? { skillsOmitidas: [...extras.skillsOmitidas] }
+      : {}),
   }
 }
 
@@ -328,6 +348,24 @@ export function aplicarEventoTurno(
       id: generarIdVisual(),
       tipo: 'aviso',
       texto: `Se alcanzó el límite de ${evento.pasos} pasos.`,
+    })
+    return nuevo
+  }
+
+  if (evento.tipo === 'instrucciones_cargadas') {
+    nuevo.historial.push({
+      id: generarIdVisual(),
+      tipo: 'aviso',
+      texto: `Instrucciones cargadas: ${evento.ruta}`,
+    })
+    return nuevo
+  }
+
+  if (evento.tipo === 'aviso_hook') {
+    nuevo.historial.push({
+      id: generarIdVisual(),
+      tipo: 'aviso',
+      texto: evento.texto,
     })
     return nuevo
   }

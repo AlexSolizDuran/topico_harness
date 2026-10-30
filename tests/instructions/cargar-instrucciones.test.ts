@@ -28,7 +28,9 @@ describe('cargarInstruccionesProyecto', () => {
     writeFileSync(join(dir, 'AGENTS.md'), '# Reglas\nUsar TypeScript')
     const res = cargarInstruccionesProyecto(dir)
     expect(res?.contenido).toBe('# Reglas\nUsar TypeScript')
-    expect(res?.tamanioBytes).toBe(Buffer.byteLength('# Reglas\nUsar TypeScript'))
+    expect(res?.tamanioBytes).toBe(
+      Buffer.byteLength('# Reglas\nUsar TypeScript'),
+    )
   })
 
   it('continúa sin error si no existe AGENTS.md', () => {

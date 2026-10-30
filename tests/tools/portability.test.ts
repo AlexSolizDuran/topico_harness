@@ -172,13 +172,13 @@ describe('Portabilidad de herramientas', () => {
       const externo = mkdtempSync(join(tmpdir(), 'harness-externo-'))
       try {
         writeFileSync(join(externo, 'a.ts'), 'x', 'utf-8')
-        symlinkSync(externo, join(tempDir, 'enlace'))
+        symlinkSync(externo, join(tempDir, 'enlace'), 'junction')
         // WHEN la ruta está dentro pero el symlink la resuelve fuera
         const motivo = motivoAprobacionRuta('enlace/a.ts', tempDir)
         // THEN el sistema pide aprobación obligatoria
         expect(motivo).toContain('fuera del proyecto')
       } finally {
-        rmSync(join(tempDir, 'enlace'), { force: true })
+        rmSync(join(tempDir, 'enlace'), { recursive: true, force: true })
         rmSync(externo, { recursive: true, force: true })
       }
     })

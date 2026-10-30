@@ -26,6 +26,30 @@
           "soportaHerramientas": true,
           "ventanaContexto": 64000,
           "maxTokensSalida": 1024
+        },
+        {
+          "id": "openai/gpt-oss-120b:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 131072,
+          "maxTokensSalida": 4096
+        },
+        {
+          "id": "qwen/qwen3-coder:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 131072,
+          "maxTokensSalida": 4096
+        },
+        {
+          "id": "google/gemma-4-31b-it:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 131072,
+          "maxTokensSalida": 4096
+        },
+        {
+          "id": "z-ai/glm-4.5-air:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 131072,
+          "maxTokensSalida": 4096
         }
       ]
     },

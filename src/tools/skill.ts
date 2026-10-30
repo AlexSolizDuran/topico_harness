@@ -1,11 +1,17 @@
-import { readFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import type { EntradaHerramienta } from '../core/registry.js'
 import { MARCADOR_SKILL_NO_RECORTABLE } from '../context/trimming.js'
-import type { SkillDescubierta } from '../skills/descubrir.js'
+import type { EntradaHerramienta } from '../core/registry.js'
+import {
+  cargarCuerpoSkill,
+  type SkillDescubierta,
+} from '../skills/descubrir.js'
+
+export interface OpcionesHerramientaSkill {
+  alCargarSkill?: ((id: string) => void) | undefined
+}
 
 export function crearHerramientaSkill(
-  skills: SkillDescubierta[],
+  skills: readonly SkillDescubierta[],
+  opciones: OpcionesHerramientaSkill = {},
 ): EntradaHerramienta {
   const mapa = new Map<string, SkillDescubierta>()
   for (const skill of skills) {
@@ -34,10 +40,12 @@ export function crearHerramientaSkill(
       if (!skill) {
         return `ERROR: Skill no encontrada: ${id}`
       }
+      opciones.alCargarSkill?.(skill.id)
       const baseDir = skill.rutaDirectorio
-      const cuerpo = skill.cuerpo.startsWith('\n')
-        ? skill.cuerpo
-        : `\n${skill.cuerpo}`
+      const textoCuerpo = cargarCuerpoSkill(skill)
+      const cuerpo = textoCuerpo.startsWith('\n')
+        ? textoCuerpo
+        : `\n${textoCuerpo}`
       const encabezado = [
         `Skill: ${skill.nombre} (${skill.id})`,
         `Directorio base: ${baseDir}`,

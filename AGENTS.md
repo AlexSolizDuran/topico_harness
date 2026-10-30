@@ -11,8 +11,8 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-La implementación está completa: los 25 changes de `openspec/changes/archive/` están
-implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 406
+La implementación está completa: los 31 changes de `openspec/changes/archive/` están
+implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 462
 tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
 con herramientas reales.
 
@@ -20,23 +20,26 @@ con herramientas reales.
 
 | | |
 |---|---|
-| Capacidades | 9 |
-| Requisitos | 113 |
-| Escenarios | 356 |
-| Implementación | 25 changes, `npm run check` en verde (406 tests) |
+| Capacidades | 12 |
+| Requisitos | 138 |
+| Escenarios | 456 |
+| Implementación | 31 changes, `npm run check` en verde (462 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
 |---|---|---|---|
 | `core` | 12 | 41 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación, espera de aprobación, tandas paralelas, detección de bucles |
-| `provider` | 7 | 24 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial, conteo de tokens, cambio de modelo entre turnos |
+| `provider` | 8 | 30 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial por entorno (`.env`), conteo de tokens, cambio de modelo entre turnos |
 | `tools` | 21 | 79 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo con aprobación obligatoria de lo riesgoso, redirecciones, archivos sensibles, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas |
-| `context` | 10 | 28 | presupuesto, conteo, recorte, compactación, validación entre pasos, presupuesto independiente por subagente y las tres reglas que no se rompen |
-| `interface` | 22 | 67 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`) y búsqueda (`/sesiones buscar`) |
+| `context` | 14 | 45 | presupuesto en 5 etapas (aviso, enmascarado selectivo, poda, resumen por bloque y compactación), conteo, validación entre pasos, presupuesto independiente por subagente y las tres reglas que no se rompen |
+| `interface` | 22 | 67 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`), búsqueda (`/sesiones buscar`) y panel `/skills` |
 | `sesiones` | 11 | 24 | guardado incremental por turno, reanudación con historial y configuración, listado, credencial redactada, compactación como reemplazo, límite por proyecto, ramas desde un turno anterior y búsqueda por texto |
 | `agents` | 6 | 20 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio y defaults |
 | `subagents` | 15 | 37 | delegación con contexto aislado, profundidad máxima 1, intersección de solo lectura, cancelación unidireccional, presupuesto/pasos/modelo propios y tareas en background con continuación del turno |
 | `permissions` | 9 | 36 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
+| `instructions` | 8 | 31 | carga automática del `AGENTS.md` raíz al arrancar y carga diferida de `AGENTS.md` anidados al explorar subdirectorios, topes de 32 KiB por archivo y 64 KiB total, herencia en subagentes |
+| `skills` | 6 | 21 | descubrimiento de `.opencode/skills/`, anuncio ligero en el prompt, herramienta `skill` bajo demanda sin recorte de contexto, permisos por identificador y panel `/skills` |
+| `hooks` | 6 | 25 | comandos externos en `sessionStart`, `sessionEnd`, `preTool`, `postTool` y `turnEnd`, códigos `0`/`1`/`2`, timeout de 30s, truncado a 8 KiB, sanitización de credenciales y permiso `hook` |
 
 `openspec/specs/<capacidad>/spec.md` es la fuente de verdad. La estructura de cada
 spec es fija: `## Purpose`, luego `## Requirements`, y dentro `### Requirement:`
@@ -178,16 +181,19 @@ core/ NO importa interface/.
 
 | Carpeta | Qué vive ahí | Spec |
 |---|---|---|
-| `src/types.ts` | `Mensaje`, `Evento`, `EstadoTurno`, `PorteroPermisos` | cruza varias capacidades |
+| `src/types.ts` | `Mensaje`, `Evento`, `EstadoTurno`, `PorteroPermisos`, `EjecutorHooks` | cruza varias capacidades |
 | `src/core/` | el bucle, el historial, el despacho, las tandas, los loops, la cancelación | `core` |
 | `src/provider/` | la interfaz del provider y su adaptador | `provider` |
-| `src/tools/` | las herramientas, el catálogo y la lista negra como etiquetas de riesgo | `tools` |
-| `src/context/` | presupuesto, recorte y compactación | `context` |
+| `src/tools/` | las herramientas (`read`, `write`, `edit`, `apply_patch`, `glob`, `grep`, `shell`, `skill`), el catálogo y la lista negra | `tools` |
+| `src/context/` | presupuesto en 5 etapas, enmascarado selectivo, poda, resumen por bloque y compactación | `context` |
 | `src/interface/` | la interfaz de terminal | `interface` |
 | `src/agents/` | perfiles declarativos de agente, carga y defaults | `agents` |
 | `src/subagents/` | ejecutor aislado, herramientas `task`/`task_status`/`task_cancel` y gestor en background | `subagents` |
 | `src/sesiones/` | formato, almacén, reproducción, poda, ramas y búsqueda de sesiones | `sesiones` |
 | `src/permissions/` | motor de reglas, portero y persistencia de aprobaciones | `permissions` |
+| `src/instructions/` | carga del `AGENTS.md` raíz y carga diferida de `AGENTS.md` anidados por exploración | `instructions` |
+| `src/skills/` | descubrimiento de `.opencode/skills/`, frontmatter y anuncio en el prompt | `skills` |
+| `src/hooks/` | ejecución de hooks de ciclo de vida (`sessionStart`, `sessionEnd`, `preTool`, `postTool`, `turnEnd`) | `hooks` |
 
 **`src/types.ts` contiene solo lo que cruza dos o más módulos.** Si un tipo lo
 usa un solo módulo, vive en ese módulo. Sin esa regla, `types.ts` se convierte en
@@ -233,7 +239,7 @@ Además:
 `tests/core/` los cubre todos. El nombre del test es el nombre del escenario,
 literal. Cuando agregás un requisito, agregás su escenario y su test.
 
-Es la única regla que ata código a spec. Con 113 requisitos y 356 escenarios, es la
+Es la única regla que ata código a spec. Con 138 requisitos y 456 escenarios, es la
 que justifica el resto.
 
 **2. La dirección de dependencia se verifica con un test, no con una promesa.** Un
@@ -244,7 +250,7 @@ test lee los archivos de `src/core/` y falla si encuentra un import de
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy pasa con 406 tests.
+typecheck y tests. Hoy pasa con 462 tests.
 
 ## Stack
 
@@ -266,12 +272,14 @@ archivo sea `.ts`. Es lo que Node verá después de compilar.
 `npm start` ejecuta lo compilado. `npm run link` construye y enlaza el binario
 `harness` de forma global.
 
-La configuración vive en `.harness/config.json`. Ese archivo está ignorado por
-git, igual que `.env`; el ejemplo versionado es `.harness/config.example.json`.
-La credencial se toma de `variableApiKey` (el nombre de una variable de entorno,
-preferido) o de `apiKey` literal. `apiKey` solo se acepta en el archivo local
-ignorado; nunca en el ejemplo ni en un archivo versionado. La credencial se pasa a
-`credencialesSanitizar` para redactarla de errores y resultados.
+La configuración del proyecto vive en `.harness/config.json` y se versiona sin
+secretos. La credencial se toma exclusivamente de `variableApiKey` (el nombre de
+una variable de entorno en `.env`, que está ignorado por git; `.env.example`
+documenta la variable). Si `.harness/config.json` del proyecto contiene `apiKey`
+literal, el arranque se rechaza para evitar filtrar secretos en git; `apiKey`
+solo se acepta en la configuración global del usuario (`~/.harness/config.json`).
+La credencial se pasa a `credencialesSanitizar` para redactarla de errores y
+resultados.
 
 Cada modelo declara:
 
@@ -309,8 +317,7 @@ No contradigas los specs. En resumen:
    usa un catálogo por plataforma: Unix con `exec`; Windows con PowerShell. El
    catálogo y la lista negra son etiquetas de riesgo, no un muro: un comando fuera
    del catálogo, de la lista negra o una línea compuesta en Windows pide aprobación
-   obligatoria. Falta verificar el camino de Windows en CI: el desarrollo y la
-   prueba real fueron en Linux.
+   obligatoria.
 4. **El provider va detrás de una interfaz propia.** El SDK vive solo en el
    adaptador. Agregar un provider después no toca el loop.
 5. **Nada se rechaza: lo riesgoso pide aprobación obligatoria.** La lista negra se
@@ -323,7 +330,7 @@ No contradigas los specs. En resumen:
    turno y la persistencia de sesiones es JSONL en `.harness/sesiones/`. Nada de
    SQLite.
 
-Fuera de alcance de la v1: hooks, sandbox, LSP, MCP y memoria.
+Fuera de alcance de la v1: sandbox, LSP, MCP y memoria persistente entre sesiones.
 
 ## Reglas de trabajo
 
@@ -333,9 +340,9 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
    vuelve a validar, nunca el código.
 2. **Nada de commits ni push sin pedido explícito.** Un agente no commitea por
    iniciativa propia.
-3. **Cero secretos en el repo.** La credencial se lee del entorno (`.env`) o de
-   `.harness/config.json`, que está ignorado. El ejemplo versionado no lleva
-   secretos. La credencial se redacta de los errores y nunca aparece en un evento
+3. **Cero secretos en el repo.** La credencial se lee del entorno (`.env`, ignorado
+   por git). `.harness/config.json` del proyecto se versiona y rechaza `apiKey`
+   literal. La credencial se redacta de los errores y nunca aparece en un evento
    ni en un log.
 4. **Verificar antes de decir que está.** No reportes algo como funcionando sin
    haber corrido el comando.
@@ -349,7 +356,7 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
 |---|---|
 | `alcance/` | Por qué el harness se construye por niveles. 12 documentos de referencia. El razonamiento, no el contrato |
 | `openspec/config.yaml` | Contexto que OpenSpec inyecta: stack, reglas, flujo, estado |
-| `openspec/specs/` | El contrato: 9 capacidades, 113 requisitos, 356 escenarios |
+| `openspec/specs/` | El contrato: 12 capacidades, 138 requisitos, 456 escenarios |
 | `PREGUNTAS.md` | Las decisiones ya resueltas y las que se postergaron |
 | `src/` | La implementación, una carpeta por capacidad. La arquitectura está en la sección de arriba |
 | `tests/` | Un test por escenario, agrupado por capacidad |

@@ -3,8 +3,19 @@ import {
   type DefinicionAgente,
   validarConjuntoAgentes,
 } from './agents/definiciones.js'
+import {
+  type ConfiguracionUmbralesContexto,
+  resolverYValidarUmbrales,
+} from './context/budget.js'
+import { estimarTokensTexto } from './context/tokens.js'
 import type { RegistroHerramientas } from './core/registry.js'
-import { cargarInstruccionesProyecto } from './instructions/cargar-instrucciones.js'
+import {
+  type ConfiguracionHooks,
+  type EjecutorComandoHook,
+  ErrorBloqueoHook,
+  GestorHooks,
+} from './hooks/ejecutar.js'
+import { GestorInstrucciones } from './instructions/cargar-instrucciones.js'
 import { type FabricaProveedor, SesionInteractiva } from './interface/runner.js'
 import type { EstadoSesionVisual } from './interface/state.js'
 import {
@@ -23,7 +34,7 @@ import {
   ErrorSesion,
   type SesionCargada,
 } from './sesiones/index.js'
-import { descubrirSkills, ErrorSkillExcedida } from './skills/index.js'
+import { descubrirSkills } from './skills/index.js'
 import { GestorTareasBackground } from './subagents/background.js'
 import { crearHerramientaDelegacion } from './subagents/herramienta.js'
 import {
@@ -35,7 +46,6 @@ import {
   registrarHerramientaConValidacion,
 } from './tools/catalog.js'
 import type { PorteroPermisos, ReglaPermiso } from './types.js'
-import { estimarTokensTexto } from './context/tokens.js'
 
 export interface OpcionesHarness {
   directorioProyecto?: string | undefined
@@ -44,6 +54,7 @@ export interface OpcionesHarness {
   config?: ConfiguracionHarness | undefined
   promptSistema?: string | undefined
   ventanaContexto?: number | undefined
+  umbralesContexto?: ConfiguracionUmbralesContexto | undefined
   credencialesSanitizar?: string[] | undefined
   modelosDisponibles?: string[] | undefined
   modeloActivo?: string | undefined
@@ -61,6 +72,12 @@ export interface OpcionesHarness {
   almacen?: AlmacenSesiones | undefined
   ramaDe?: string | undefined
   desde?: number | undefined
+  topeInstruccionesBytes?: number | undefined
+  topeTotalInstruccionesBytes?: number | undefined
+  topeSkillBytes?: number | undefined
+  hooks?: ConfiguracionHooks | undefined
+  timeoutHookMs?: number | undefined
+  ejecutorComandoHook?: EjecutorComandoHook | undefined
 }
 
 export interface HarnessConstruido {
@@ -69,6 +86,7 @@ export interface HarnessConstruido {
   proveedor: Proveedor
   agentes: DefinicionAgente[]
   config?: ConfiguracionHarness | undefined
+  cerrar: () => Promise<void>
 }
 
 const PROMPT_SISTEMA_POR_DEFECTO =
@@ -82,14 +100,28 @@ export function construirHarness(
   opciones: OpcionesHarness = {},
 ): HarnessConstruido {
   const directorioProyecto = opciones.directorioProyecto ?? process.cwd()
-  const instrucciones = cargarInstruccionesProyecto(directorioProyecto)
-  const { skills, avisos: avisosSkills } = descubrirSkills(directorioProyecto)
-  for (const aviso of avisosSkills) {
-    console.error(aviso)
-  }
+  const gestorInstrucciones = new GestorInstrucciones({
+    directorioProyecto,
+    topeArchivoBytes: opciones.topeInstruccionesBytes,
+    topeTotalBytes: opciones.topeTotalInstruccionesBytes,
+  })
+  const instruccionesContenido = gestorInstrucciones.obtenerContenido()
+  const {
+    skills,
+    avisos: avisosSkills,
+    omitidas: skillsOmitidas,
+  } = descubrirSkills(directorioProyecto, {
+    topeBytes: opciones.topeSkillBytes,
+  })
+
+  let sesionRef: SesionInteractiva | undefined
   const registro =
     opciones.registro ??
-    crearCatalogoPorDefecto({ directorioProyecto, skills })
+    crearCatalogoPorDefecto({
+      directorioProyecto,
+      skills,
+      alCargarSkill: (id) => sesionRef?.marcarSkillCargada(id),
+    })
 
   let proveedor = opciones.proveedor
   let ventanaContexto = opciones.ventanaContexto ?? 128000
@@ -127,6 +159,12 @@ export function construirHarness(
     throw new Error('No se pudo construir el proveedor de la sesión.')
   }
 
+  const umbralesConfig =
+    opciones.umbralesContexto ?? config?.umbrales ?? config?.contexto?.umbrales
+  if (umbralesConfig) {
+    resolverYValidarUmbrales(umbralesConfig)
+  }
+
   if (!modeloActivo && proveedor.modelo) {
     modeloActivo = `${proveedor.nombre}/${proveedor.modelo}`
   }
@@ -135,7 +173,7 @@ export function construirHarness(
   }
 
   let agentesLista: DefinicionAgente[] = []
-  let sesionRef: SesionInteractiva | undefined
+  let gestorHooksRef: GestorHooks | undefined
   const gestorTareas = new GestorTareasBackground()
 
   if (!opciones.registro && !registro.tiene('task')) {
@@ -156,7 +194,9 @@ export function construirHarness(
         return fabricaProveedor(provId, modId)
       },
       obtenerPromptBase: () =>
-        opciones.promptSistema ?? PROMPT_SISTEMA_POR_DEFECTO,
+        sesionRef?.obtenerPromptBaseParaSubagente() ??
+        opciones.promptSistema ??
+        PROMPT_SISTEMA_POR_DEFECTO,
       obtenerCredenciales: () => credencialesSanitizar,
       crearPorteroSubagente: (subagente) =>
         new GestorPermisos({
@@ -166,6 +206,8 @@ export function construirHarness(
           esInteractivo: opciones.esInteractivo ?? true,
           manejadorAprobacion: opciones.manejadorAprobacion,
         }),
+      crearHooksSubagente: (_subagente, porteroHijo) =>
+        gestorHooksRef?.paraSubagente(porteroHijo),
     })
     registrarHerramientaConValidacion(registro, toolTask)
     registrarHerramientaConValidacion(
@@ -242,11 +284,69 @@ export function construirHarness(
     }
   }
 
+  const hooksConfig = opciones.hooks ?? config?.hooks
+  const porteroInicial =
+    opciones.portero ??
+    new GestorPermisos({
+      directorioProyecto,
+      reglasGlobales: opciones.reglasPermiso,
+      esInteractivo: opciones.esInteractivo ?? true,
+      manejadorAprobacion: opciones.manejadorAprobacion,
+    })
+
+  const avisosIniciales = [...avisosSkills]
+  let sessionStartPendiente = false
+
+  const porteroDelegadoHooks: PorteroPermisos = {
+    evaluar: (herramienta, argumentos) =>
+      (
+        opciones.portero ??
+        sesionRef?.obtenerGestorPermisos() ??
+        porteroInicial
+      ).evaluar(herramienta, argumentos),
+    solicitarAprobacion: (solicitud, senal) => {
+      const activo =
+        opciones.portero ?? sesionRef?.obtenerGestorPermisos() ?? porteroInicial
+      if (!activo.solicitarAprobacion) {
+        return Promise.resolve('denegar')
+      }
+      return activo.solicitarAprobacion(solicitud, senal)
+    },
+  }
+
+  if (hooksConfig) {
+    gestorHooksRef = new GestorHooks({
+      hooks: hooksConfig,
+      directorioProyecto,
+      portero: porteroDelegadoHooks,
+      credenciales: credencialesSanitizar,
+      timeoutMs: opciones.timeoutHookMs,
+      ejecutorComando: opciones.ejecutorComandoHook,
+    })
+
+    const inicioSync = gestorHooksRef.ejecutarSincrono({
+      evento: 'sessionStart',
+    })
+    if (inicioSync.requiereAprobacionAsync) {
+      sessionStartPendiente = true
+    } else {
+      avisosIniciales.push(...inicioSync.resultado.avisos)
+      if (inicioSync.resultado.bloqueado) {
+        throw new ErrorBloqueoHook(
+          'sessionStart',
+          inicioSync.resultado.mensajeBloqueo ??
+            'El arranque de la sesión fue bloqueado por un hook sessionStart.',
+        )
+      }
+    }
+  }
+
   const sesion = new SesionInteractiva({
     proveedor,
     registro,
     promptSistema: opciones.promptSistema ?? PROMPT_SISTEMA_POR_DEFECTO,
     ventanaContexto,
+    umbralesContexto: umbralesConfig,
     credencialesSanitizar,
     modelosDisponibles,
     modeloActivo,
@@ -260,17 +360,30 @@ export function construirHarness(
     portero: opciones.portero,
     manejadorAprobacion: opciones.manejadorAprobacion,
     gestorTareas,
+    gestorInstrucciones,
     ...(almacen ? { almacen } : {}),
     ...(sesionInicial ? { sesionInicial } : {}),
-    ...(instrucciones
+    ...(instruccionesContenido
       ? {
-          instruccionesProyecto: instrucciones.contenido,
+          instruccionesProyecto: instruccionesContenido,
           tokensSistemaInstrucciones: estimarTokensTexto(
-            instrucciones.contenido,
+            instruccionesContenido,
           ),
         }
       : {}),
-    skills,
+    skills: skills.map((s) => ({
+      id: s.id,
+      nombre: s.nombre,
+      descripcion: s.descripcion,
+      cargada: false,
+    })),
+    skillsOmitidas: skillsOmitidas.map((o) => ({
+      id: o.id,
+      motivo: o.motivo,
+    })),
+    avisosIniciales,
+    gestorHooks: gestorHooksRef,
+    sessionStartPendiente,
   })
   sesionRef = sesion
 
@@ -281,5 +394,12 @@ export function construirHarness(
     sesion.cambiarAgente(opciones.agenteActivo)
   }
 
-  return { sesion, registro, proveedor, agentes: agentesLista, config }
+  return {
+    sesion,
+    registro,
+    proveedor,
+    agentes: agentesLista,
+    config,
+    cerrar: () => sesion.cerrarSesion(),
+  }
 }

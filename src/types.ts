@@ -16,6 +16,7 @@ export type AccionPermisoCanon =
   | 'subagent'
   | 'external_directory'
   | 'skill'
+  | 'hook'
 
 export type AccionPermiso =
   | AccionPermisoCanon
@@ -130,6 +131,34 @@ export type EventoProveedor =
       tokens?: ConteoTokens | undefined
     }
 
+export type EventoHook =
+  | 'sessionStart'
+  | 'sessionEnd'
+  | 'preTool'
+  | 'postTool'
+  | 'turnEnd'
+
+export interface ContextoHook {
+  evento: EventoHook
+  herramienta?: string | undefined
+  argumentos?: Record<string, unknown> | undefined
+  resultado?: string | undefined
+}
+
+export interface ResultadoEjecucionHook {
+  bloqueado: boolean
+  mensajeBloqueo?: string | undefined
+  notas: string[]
+  avisos: string[]
+}
+
+export interface EjecutorHooks {
+  ejecutar: (
+    contexto: ContextoHook,
+    senalCancelacion?: AbortSignal,
+  ) => Promise<ResultadoEjecucionHook>
+}
+
 export type EventoTurno =
   | {
       tipo: 'texto'
@@ -164,6 +193,16 @@ export type EventoTurno =
   | {
       tipo: 'limite_pasos_alcanzado'
       pasos: number
+    }
+  | {
+      tipo: 'instrucciones_cargadas'
+      ruta: string
+      tamanioBytes: number
+      tokens: number
+    }
+  | {
+      tipo: 'aviso_hook'
+      texto: string
     }
 
 export type EstadoTurno =

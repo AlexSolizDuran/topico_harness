@@ -13,6 +13,7 @@ export const REGLAS_BASE: readonly ReglaPermiso[] = [
   { accion: 'read', recurso: '*.env', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env.*', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env.example', efecto: 'permitir' },
+  { accion: 'hook', recurso: '*', efecto: 'consultar' },
 ]
 
 const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
@@ -47,6 +48,7 @@ const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
   directorio_externo: 'external_directory',
   'directorio externo': 'external_directory',
   skill: 'skill',
+  hook: 'hook',
 }
 
 export function normalizarAccionPermiso(

@@ -1,13 +1,17 @@
 import type { Proveedor } from '../provider/types.js'
 import type {
   ConteoTokens,
+  EjecutorHooks,
   EstadoTurno,
   EventoTurno,
   Mensaje,
   PorteroPermisos,
   SolicitudHerramienta,
 } from '../types.js'
-import { ejecutarTandasDeHerramientas } from './batches.js'
+import {
+  type AlExplorarRutas,
+  ejecutarTandasDeHerramientas,
+} from './batches.js'
 import { clonarHistorial, validarHistorialAtomico } from './history.js'
 import { DetectorLoops } from './loops.js'
 import type { RegistroHerramientas } from './registry.js'
@@ -17,6 +21,7 @@ export const LIMITE_PASOS_POR_DEFECTO = 25
 export interface PreparacionHistorial {
   mensajes: Mensaje[]
   error?: string | undefined
+  aviso?: string | undefined
 }
 
 export type PrepararHistorial = (mensajes: Mensaje[]) => PreparacionHistorial
@@ -25,13 +30,15 @@ export interface OpcionesTurno {
   proveedor: Proveedor
   registro: RegistroHerramientas
   mensajes: Mensaje[]
-  sistema?: string | undefined
+  sistema?: string | (() => string | undefined) | undefined
   limitePasos?: number | undefined
   senalCancelacion?: AbortSignal | undefined
   credencialesSanitizar?: string[] | undefined
   prepararHistorial?: PrepararHistorial | undefined
   portero?: PorteroPermisos | undefined
   enTurnoHijo?: boolean | undefined
+  alExplorarRutas?: AlExplorarRutas | undefined
+  hooks?: EjecutorHooks | undefined
 }
 
 interface ResultadoPasoProveedor {
@@ -52,6 +59,15 @@ function prepararHistorialAntesDeEnviar(
     validarHistorialAtomico(historial)
   }
   return preparado?.error
+}
+
+function resolverSistema(
+  sistema: OpcionesTurno['sistema'],
+): string | undefined {
+  if (typeof sistema === 'function') {
+    return sistema()
+  }
+  return sistema
 }
 
 async function* consultarProveedor(
@@ -78,7 +94,7 @@ async function* consultarProveedor(
     const flujo = opciones.proveedor.enviar({
       mensajes: historial,
       herramientas: herramientas.length > 0 ? herramientas : undefined,
-      sistema: opciones.sistema,
+      sistema: resolverSistema(opciones.sistema),
       senalCancelacion: opciones.senalCancelacion,
     })
 
@@ -176,6 +192,8 @@ async function* ejecutarUnPaso(
     portero: opciones.portero,
     detectorLoops,
     historial,
+    alExplorarRutas: opciones.alExplorarRutas,
+    hooks: opciones.hooks,
   })
 
   if (resTandas.cancelado) {
@@ -205,6 +223,26 @@ async function* ejecutarUnPaso(
   return undefined
 }
 
+async function* dispararHookFinTurno(
+  opciones: OpcionesTurno,
+): AsyncGenerator<EventoTurno, void, unknown> {
+  if (!opciones.hooks || opciones.enTurnoHijo) return
+  try {
+    const res = await opciones.hooks.ejecutar({ evento: 'turnEnd' })
+    for (const aviso of res.avisos) {
+      yield { tipo: 'aviso_hook', texto: aviso }
+    }
+    for (const nota of res.notas) {
+      yield { tipo: 'aviso_hook', texto: nota }
+    }
+    if (res.mensajeBloqueo) {
+      yield { tipo: 'aviso_hook', texto: res.mensajeBloqueo }
+    }
+  } catch {
+    // Nunca propaga un error de hook al cerrar el turno.
+  }
+}
+
 /**
  * Ejecuta un turno completo del agente como un generador asíncrono de eventos,
  * retornando un EstadoTurno consistente (completado, cancelado o fallido).
@@ -219,6 +257,7 @@ export async function* ejecutarTurno(
   validarHistorialAtomico(historial)
 
   if (opciones.senalCancelacion?.aborted) {
+    yield* dispararHookFinTurno(opciones)
     return { tipo: 'cancelado', mensajes: historial, pasosEjecutados: 0 }
   }
 
@@ -234,9 +273,11 @@ export async function* ejecutarTurno(
       detectorLoops,
     )
     if (resultadoPaso) {
+      yield* dispararHookFinTurno(opciones)
       return resultadoPaso
     }
   }
 
+  yield* dispararHookFinTurno(opciones)
   return { tipo: 'completado', mensajes: historial, pasosEjecutados: paso }
 }
