@@ -11,9 +11,11 @@ permisos por agente.
 ### Requirement: Cada agente se define como un dato declarativo
 El sistema SHALL obtener las definiciones de agente de un archivo de configuración
 del proyecto. Cada definición SHALL declarar nombre, descripción, modo y conjunto
-de herramientas, y MAY declarar un prompt propio y un modelo. El sistema SHALL leer
-el archivo al arrancar. El sistema SHALL NOT requerir cambios en el código del bucle
-para agregar un agente.
+de herramientas, y MAY declarar un prompt propio, un modelo y una lista de reglas
+de permiso. Las reglas de permiso de un agente SHALL usar el mismo formato que las
+reglas del proyecto y SHALL agregarse después de las globales. El sistema SHALL
+leer el archivo al arrancar. El sistema SHALL NOT requerir cambios en el código del
+bucle para agregar un agente.
 
 #### Scenario: Agregar un agente no requiere tocar el bucle
 - **WHEN** se agrega una definición válida al archivo de agentes
@@ -26,6 +28,10 @@ para agregar un agente.
 #### Scenario: Un agente declara su modelo
 - **WHEN** una definición declara un modelo de la configuración
 - **THEN** el agente usa ese modelo en sus turnos
+
+#### Scenario: Un agente declara sus permisos
+- **WHEN** una definición declara una lista de reglas de permiso válida
+- **THEN** la definición cargada conserva esas reglas y la sesión las aplica después de las globales
 
 ### Requirement: El modo determina cómo se invoca un agente
 El sistema SHALL distinguir tres modos: primario, subagente y ambos. Un agente
@@ -92,10 +98,11 @@ defecto.
 
 ### Requirement: Una definición inválida falla al arrancar con un mensaje explícito
 El sistema SHALL rechazar al arrancar una definición con nombre vacío o repetido,
-un modo desconocido, una herramienta que no existe en el catálogo, o un modelo que
-no existe en la configuración, con un mensaje que identifique la definición y el
-problema. El sistema SHALL rechazar un conjunto sin ningún agente primario. El
-sistema SHALL NOT ignorar en silencio una definición inválida.
+un modo desconocido, una herramienta que no existe en el catálogo, un modelo que
+no existe en la configuración, o una regla de permiso con forma inválida, con un
+mensaje que identifique la definición y el problema. El sistema SHALL rechazar un
+conjunto sin ningún agente primario. El sistema SHALL NOT ignorar en silencio una
+definición inválida.
 
 #### Scenario: Una herramienta inexistente falla al arrancar
 - **WHEN** una definición declara una herramienta que no está en el catálogo
@@ -116,6 +123,10 @@ sistema SHALL NOT ignorar en silencio una definición inválida.
 #### Scenario: Un modelo inexistente falla al arrancar
 - **WHEN** una definición declara un modelo que no está en la configuración
 - **THEN** el arranque falla con un mensaje que nombra la definición y el modelo
+
+#### Scenario: Una regla de permiso inválida falla al arrancar
+- **WHEN** una definición declara una regla de permiso sin acción, sin recurso o con un efecto desconocido
+- **THEN** el arranque falla con un mensaje que nombra la definición y la posición de la regla
 
 ### Requirement: Sin configuración el sistema ofrece un agente completo y uno de solo lectura
 El sistema SHALL ofrecer, cuando no existe archivo de agentes, un agente que puede

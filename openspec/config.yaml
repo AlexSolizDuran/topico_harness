@@ -86,14 +86,14 @@ context: |
     editar el spec.
 
   FLUJO DE ESTE REPO
-    `openspec/specs/` es el contrato acordado: 12 capacidades, 138 requisitos y
-    456 escenarios. Los 31 changes de `openspec/changes/archive/` ya lo implementaron.
+    `openspec/specs/` es el contrato acordado: 12 capacidades, 139 requisitos y
+    463 escenarios. Los 32 changes de `openspec/changes/archive/` ya están archivados.
     Los changes IMPLEMENTAN contra esos requisitos, no los vuelven a derivar. Al
     proponer un change, leer primero la capacidad con
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
 
   ESTADO
-    12 capacidades, 138 requisitos, 456 escenarios. Todo validado contra el schema
+    12 capacidades, 139 requisitos, 463 escenarios. Todo validado contra el schema
     `spec-driven`.
     core (12) · provider (8) · tools (21) · context (14) · interface (22) · sesiones (11) · agents (6) · subagents (15) · permissions (9) · instructions (8) · skills (6) · hooks (6)
     IMPLEMENTADO: `src/` y `tests/` existen, `npm run check` pasa con 462 tests

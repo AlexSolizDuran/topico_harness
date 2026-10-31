@@ -11,9 +11,9 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-La implementación está completa: los 31 changes de `openspec/changes/archive/` están
-implementados y `src/` y `tests/` ya existen. `npm run check` pasa con 462
-tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
+La implementación está completa: los 31 changes de implementación de
+`openspec/changes/archive/` están implementados, más el change de higiene de specs,
+y `src/` y `tests/` ya existen. `npm run check` pasa con 462 tests. La prueba de punta a punta contra OpenRouter también pasó, en modo plano y
 con herramientas reales.
 
 ## Estado del OpenSpec
@@ -21,9 +21,9 @@ con herramientas reales.
 | | |
 |---|---|
 | Capacidades | 12 |
-| Requisitos | 138 |
-| Escenarios | 456 |
-| Implementación | 31 changes, `npm run check` en verde (462 tests) |
+| Requisitos | 139 |
+| Escenarios | 463 |
+| Changes | 32 archivados (31 de implementación + 1 de specs), `npm run check` en verde (462 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
@@ -32,11 +32,11 @@ con herramientas reales.
 | `provider` | 8 | 30 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial por entorno (`.env`), conteo de tokens, cambio de modelo entre turnos |
 | `tools` | 21 | 79 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo con aprobación obligatoria de lo riesgoso, redirecciones, archivos sensibles, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas |
 | `context` | 14 | 45 | presupuesto en 5 etapas (aviso, enmascarado selectivo, poda, resumen por bloque y compactación), conteo, validación entre pasos, presupuesto independiente por subagente y las tres reglas que no se rompen |
-| `interface` | 22 | 67 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`), búsqueda (`/sesiones buscar`) y panel `/skills` |
+| `interface` | 22 | 71 | streaming, herramientas y tandas visibles, delegación diferenciada, aprobaciones interactivas, cambio de agente (`Tab` y `/agente`), input, cancelación, degradación sin terminal, indicador de tareas en background, ramas (`/rama`), búsqueda (`/sesiones buscar`) y panel `/skills` |
 | `sesiones` | 11 | 24 | guardado incremental por turno, reanudación con historial y configuración, listado, credencial redactada, compactación como reemplazo, límite por proyecto, ramas desde un turno anterior y búsqueda por texto |
-| `agents` | 6 | 20 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio y defaults |
+| `agents` | 6 | 22 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio, permisos y defaults |
 | `subagents` | 15 | 37 | delegación con contexto aislado, profundidad máxima 1, intersección de solo lectura, cancelación unidireccional, presupuesto/pasos/modelo propios y tareas en background con continuación del turno |
-| `permissions` | 9 | 36 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
+| `permissions` | 9 | 37 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`) y degradación sin TTY |
 | `instructions` | 8 | 31 | carga automática del `AGENTS.md` raíz al arrancar y carga diferida de `AGENTS.md` anidados al explorar subdirectorios, topes de 32 KiB por archivo y 64 KiB total, herencia en subagentes |
 | `skills` | 6 | 21 | descubrimiento de `.opencode/skills/`, anuncio ligero en el prompt, herramienta `skill` bajo demanda sin recorte de contexto, permisos por identificador y panel `/skills` |
 | `hooks` | 6 | 25 | comandos externos en `sessionStart`, `sessionEnd`, `preTool`, `postTool` y `turnEnd`, códigos `0`/`1`/`2`, timeout de 30s, truncado a 8 KiB, sanitización de credenciales y permiso `hook` |
@@ -239,7 +239,7 @@ Además:
 `tests/core/` los cubre todos. El nombre del test es el nombre del escenario,
 literal. Cuando agregás un requisito, agregás su escenario y su test.
 
-Es la única regla que ata código a spec. Con 138 requisitos y 456 escenarios, es la
+Es la única regla que ata código a spec. Con 139 requisitos y 463 escenarios, es la
 que justifica el resto.
 
 **2. La dirección de dependencia se verifica con un test, no con una promesa.** Un
@@ -356,7 +356,7 @@ Se cargan en toda sesión. Si una contradice a un spec, el spec manda.
 |---|---|
 | `alcance/` | Por qué el harness se construye por niveles. 12 documentos de referencia. El razonamiento, no el contrato |
 | `openspec/config.yaml` | Contexto que OpenSpec inyecta: stack, reglas, flujo, estado |
-| `openspec/specs/` | El contrato: 12 capacidades, 138 requisitos, 456 escenarios |
+| `openspec/specs/` | El contrato: 12 capacidades, 139 requisitos, 463 escenarios |
 | `PREGUNTAS.md` | Las decisiones ya resueltas y las que se postergaron |
 | `src/` | La implementación, una carpeta por capacidad. La arquitectura está en la sección de arriba |
 | `tests/` | Un test por escenario, agrupado por capacidad |
