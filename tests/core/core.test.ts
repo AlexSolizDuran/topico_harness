@@ -15,6 +15,7 @@ import type {
   EventoTurno,
   Mensaje,
   PorteroPermisos,
+  SolicitudAprobacion,
 } from '../../src/types.js'
 
 async function consumirTurnoCompleto(
@@ -1423,12 +1424,12 @@ describe('core Specification Tests', () => {
   })
 
   // --------------------------------------------------------------------------
-  // Requirement: La repetición idéntica consecutiva no se ejecuta
+  // Requirement: La repetición idéntica consecutiva pide aprobación
   // --------------------------------------------------------------------------
-  describe('Requirement: La repetición idéntica consecutiva no se ejecuta', () => {
-    it('La tercera llamada idéntica no se ejecuta', async () => {
-      // WHEN el modelo solicita tres veces seguidas la misma herramienta con los mismos argumentos dentro del mismo turno
+  describe('Requirement: La repetición idéntica consecutiva pide aprobación', () => {
+    it('La tercera llamada idéntica pide aprobación', async () => {
       let ejecuciones = 0
+      const solicitudes: SolicitudAprobacion[] = []
       const registro = new RegistroHerramientas()
       registro.registrar({
         nombre: 'read',
@@ -1442,6 +1443,20 @@ describe('core Specification Tests', () => {
         },
       })
 
+      const portero: PorteroPermisos = {
+        evaluar: (herramienta) => ({
+          efecto: 'permitir',
+          accion: (herramienta.accionPermiso ?? 'read') as 'read' | 'doom_loop',
+          recurso: 'read',
+          patronSugerido: 'read',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async (solicitud) => {
+          solicitudes.push(solicitud)
+          return 'una_vez'
+        },
+      }
+
       const proveedor = new ProveedorSimulado({
         respuestas: [
           {
@@ -1451,7 +1466,63 @@ describe('core Specification Tests', () => {
               { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
             ],
           },
-          { fragmentosTexto: ['Me detuve'] },
+          { fragmentosTexto: ['Listo'] },
+        ],
+      })
+
+      await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'lee a.ts' }],
+        }),
+      )
+
+      expect(solicitudes).toHaveLength(1)
+      expect(solicitudes[0]?.accion).toBe('doom_loop')
+      expect(solicitudes[0]?.recurso).toBe('read')
+      expect(solicitudes[0]?.obligatoria).toBe(true)
+      expect(solicitudes[0]?.motivo).toContain('3 veces consecutivas')
+      expect(ejecuciones).toBe(3)
+    })
+
+    it('Aprobar la tercera llamada la ejecuta', async () => {
+      let ejecuciones = 0
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => {
+          ejecuciones++
+          return 'ok'
+        },
+      })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => 'una_vez',
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Hecho'] },
         ],
       })
 
@@ -1459,20 +1530,208 @@ describe('core Specification Tests', () => {
         ejecutarTurno({
           proveedor,
           registro,
-          mensajes: [{ rol: 'user', contenido: 'lee a.ts' }],
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'lee 3 veces' }],
         }),
       )
 
-      // THEN el sistema ejecuta las dos primeras, bloquea la tercera sin invocar la función ni pedir aprobación y devuelve el motivo como resultado
+      expect(ejecuciones).toBe(3)
+      const res3 = estado.mensajes.find(
+        (m) => m.rol === 'tool' && m.idLlamada === '3',
+      )
+      expect(res3?.resultado).toBe('ok')
+    })
+
+    it('La cuarta llamada idéntica vuelve a pedir aprobación', async () => {
+      let conteoAprobaciones = 0
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => 'ok',
+      })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => {
+          conteoAprobaciones++
+          return 'una_vez'
+        },
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          {
+            llamadasHerramienta: [
+              { id: '4', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Terminado'] },
+        ],
+      })
+
+      await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'lee 4 veces' }],
+        }),
+      )
+
+      expect(conteoAprobaciones).toBe(2)
+    })
+
+    it('Denegar la tercera llamada no la ejecuta', async () => {
+      let ejecuciones = 0
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => {
+          ejecuciones++
+          return 'ok'
+        },
+      })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => 'denegar',
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Entendido'] },
+        ],
+      })
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'lee' }],
+        }),
+      )
+
       expect(ejecuciones).toBe(2)
       const res3 = estado.mensajes.find(
         (m) => m.rol === 'tool' && m.idLlamada === '3',
       )
-      expect(res3?.resultado).toContain('3 veces seguidas')
+      expect(res3?.resultado).toContain('Aprobación denegada')
+    })
+
+    it('Una firma denegada sigue bloqueada aunque se intercale otra llamada', async () => {
+      let llamadasAprobacion = 0
+      let ejecucionesRead = 0
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => {
+          ejecucionesRead++
+          return 'ok'
+        },
+      })
+      registro.registrar({
+        nombre: 'glob',
+        descripcion: 'busca',
+        esquema: { required: ['patron'] },
+        accionPermiso: 'glob',
+        obtenerRecurso: (args) => String(args.patron ?? '*'),
+        ejecutar: async () => 'archivos',
+      })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => {
+          llamadasAprobacion++
+          return 'denegar'
+        },
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          {
+            llamadasHerramienta: [
+              { id: '4', nombre: 'glob', argumentos: { patron: '*.ts' } },
+            ],
+          },
+          {
+            llamadasHerramienta: [
+              { id: '5', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Fin'] },
+        ],
+      })
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'prueba bloqueo persistente' }],
+        }),
+      )
+
+      expect(llamadasAprobacion).toBe(1)
+      expect(ejecucionesRead).toBe(2)
+      const res5 = estado.mensajes.find(
+        (m) => m.rol === 'tool' && m.idLlamada === '5',
+      )
+      expect(res5?.resultado).toContain('denegada previamente por repetición')
     })
 
     it('Dos llamadas idénticas se ejecutan', async () => {
-      // WHEN el modelo solicita dos veces seguidas la misma herramienta con los mismos argumentos
       let ejecuciones = 0
       const registro = new RegistroHerramientas()
       registro.registrar({
@@ -1507,12 +1766,10 @@ describe('core Specification Tests', () => {
         }),
       )
 
-      // THEN el sistema ejecuta ambas normalmente
       expect(ejecuciones).toBe(2)
     })
 
     it('Cambiar un argumento reinicia el conteo', async () => {
-      // WHEN el modelo solicita la misma herramienta dos veces con unos argumentos y luego una tercera con argumentos distintos
       let ejecuciones = 0
       const registro = new RegistroHerramientas()
       registro.registrar({
@@ -1549,12 +1806,10 @@ describe('core Specification Tests', () => {
         }),
       )
 
-      // THEN el sistema ejecuta las tres y el conteo consecutivo se reinicia con los nuevos argumentos
       expect(ejecuciones).toBe(4)
     })
 
     it('Otra llamada en el medio reinicia el conteo', async () => {
-      // WHEN el modelo intercala otra herramienta entre llamadas iguales
       let ejecucionesRead = 0
       const registro = new RegistroHerramientas()
       registro.registrar({
@@ -1599,12 +1854,10 @@ describe('core Specification Tests', () => {
         }),
       )
 
-      // THEN el conteo consecutivo se reinicia y la siguiente llamada no se bloquea
       expect(ejecucionesRead).toBe(3)
     })
 
-    it('El turno continúa después del bloqueo', async () => {
-      // WHEN una llamada repetida se bloquea
+    it('El turno continúa después de la denegación', async () => {
       const registro = new RegistroHerramientas()
       registro.registrar({
         nombre: 'read',
@@ -1614,6 +1867,17 @@ describe('core Specification Tests', () => {
         obtenerRecurso: (args) => String(args.ruta ?? '*'),
         ejecutar: async (args) => `leido:${String(args.ruta)}`,
       })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => 'denegar',
+      }
 
       const proveedor = new ProveedorSimulado({
         respuestas: [
@@ -1637,11 +1901,11 @@ describe('core Specification Tests', () => {
         ejecutarTurno({
           proveedor,
           registro,
+          portero,
           mensajes: [{ rol: 'user', contenido: 'intenta' }],
         }),
       )
 
-      // THEN el modelo recibe el motivo y puede elegir otra acción en el paso siguiente sin que el turno falle
       expect(estado.tipo).toBe('completado')
       const res4 = estado.mensajes.find(
         (m) => m.rol === 'tool' && m.idLlamada === '4',
@@ -1649,8 +1913,7 @@ describe('core Specification Tests', () => {
       expect(res4?.resultado).toBe('leido:b.ts')
     })
 
-    it('El bloqueo queda en el historial junto a su llamada', async () => {
-      // WHEN el sistema bloquea una llamada repetida
+    it('La denegación queda en el historial junto a su llamada', async () => {
       const registro = new RegistroHerramientas()
       registro.registrar({
         nombre: 'read',
@@ -1662,6 +1925,17 @@ describe('core Specification Tests', () => {
         obtenerRecurso: () => '*',
         ejecutar: async () => 'ok',
       })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: '*',
+          patronSugerido: '*',
+          obligatoria: false,
+        }),
+        solicitarAprobacion: async () => 'denegar',
+      }
 
       const proveedor = new ProveedorSimulado({
         respuestas: [
@@ -1680,16 +1954,109 @@ describe('core Specification Tests', () => {
         ejecutarTurno({
           proveedor,
           registro,
+          portero,
           mensajes: [{ rol: 'user', contenido: 'orden claves' }],
         }),
       )
 
-      // THEN registra el motivo como resultado de esa llamada para que el historial siga siendo válido
       const resC3 = estado.mensajes.find(
         (m) => m.rol === 'tool' && m.idLlamada === 'c3',
       )
       expect(resC3).toBeDefined()
-      expect(resC3?.resultado).toContain('3 veces seguidas')
+      expect(resC3?.resultado).toContain('Aprobación denegada')
+    })
+
+    it('Sin terminal se deniega la repetición', async () => {
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => 'ok',
+      })
+
+      const portero: PorteroPermisos = {
+        evaluar: () => ({
+          efecto: 'permitir',
+          accion: 'read',
+          recurso: 'a.ts',
+          patronSugerido: 'a.ts',
+          obligatoria: false,
+        }),
+        // Sin solicitarAprobacion simula cliente no interactivo
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Fin'] },
+        ],
+      })
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          portero,
+          mensajes: [{ rol: 'user', contenido: 'sin terminal' }],
+        }),
+      )
+
+      const res3 = estado.mensajes.find(
+        (m) => m.rol === 'tool' && m.idLlamada === '3',
+      )
+      expect(res3?.resultado).toContain('no hay cliente interactivo')
+    })
+
+    it('Sin portero no se ejecuta la repetición', async () => {
+      let ejecuciones = 0
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'read',
+        descripcion: 'lee',
+        esquema: { required: ['ruta'] },
+        accionPermiso: 'read',
+        obtenerRecurso: (args) => String(args.ruta ?? '*'),
+        ejecutar: async () => {
+          ejecuciones++
+          return 'ok'
+        },
+      })
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: '1', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '2', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+              { id: '3', nombre: 'read', argumentos: { ruta: 'a.ts' } },
+            ],
+          },
+          { fragmentosTexto: ['Fin'] },
+        ],
+      })
+
+      const estado = await consumirTurnoCompleto(
+        ejecutarTurno({
+          proveedor,
+          registro,
+          mensajes: [{ rol: 'user', contenido: 'sin portero' }],
+        }),
+      )
+
+      expect(ejecuciones).toBe(2)
+      const res3 = estado.mensajes.find(
+        (m) => m.rol === 'tool' && m.idLlamada === '3',
+      )
+      expect(res3?.resultado).toContain('3 veces seguidas')
     })
   })
 })

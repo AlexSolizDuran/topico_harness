@@ -228,6 +228,26 @@ describe('permissions Specification Tests', () => {
       expect(redirigido.accion).toBe('shell_redireccion')
       expect(redirigido.efecto).toBe('consultar')
     })
+
+    it('La repetición tiene una acción propia', () => {
+      const gestor = new GestorPermisos({
+        incluirBase: false,
+        reglasGlobales: [
+          { accion: 'doom_loop', recurso: 'read', efecto: 'denegar' },
+        ],
+      })
+      const ev = gestor.evaluar(
+        {
+          nombre: 'read',
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => 'read',
+        },
+        {},
+      )
+      expect(ev.accion).toBe('doom_loop')
+      expect(ev.recurso).toBe('read')
+      expect(ev.efecto).toBe('denegar')
+    })
   })
 
   // --------------------------------------------------------------------------
@@ -885,6 +905,115 @@ describe('permissions Specification Tests', () => {
       expect(ejecutado).toBe(false)
       expect(res.esError).toBe(true)
       expect(res.resultado).toContain('archivo protegido')
+    })
+
+    it('Una regla permitir no salta la aprobación de repetición', () => {
+      const gestor = new GestorPermisos({
+        reglasGlobales: [
+          { accion: 'doom_loop', recurso: '*', efecto: 'permitir' },
+        ],
+      })
+      const ev = gestor.evaluar(
+        {
+          nombre: 'read',
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => 'read',
+          motivoAprobacionObligatoria: () => 'Llamada repetida 3 veces',
+        },
+        {},
+      )
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.obligatoria).toBe(true)
+      expect(ev.motivo).toBe('Llamada repetida 3 veces')
+    })
+
+    it('Una aprobación guardada no salta la aprobación de repetición', () => {
+      const gestor = new GestorPermisos({
+        aprobacionesIniciales: [
+          { accion: 'doom_loop', recurso: 'read', efecto: 'permitir' },
+        ],
+      })
+      const ev = gestor.evaluar(
+        {
+          nombre: 'read',
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => 'read',
+          motivoAprobacionObligatoria: () => 'Llamada repetida 3 veces',
+        },
+        {},
+      )
+      expect(ev.efecto).toBe('consultar')
+      expect(ev.obligatoria).toBe(true)
+    })
+
+    it('Una regla denegar impide la repetición sin preguntar', () => {
+      const gestor = new GestorPermisos({
+        reglasGlobales: [
+          { accion: 'doom_loop', recurso: 'read', efecto: 'denegar' },
+        ],
+      })
+      const ev = gestor.evaluar(
+        {
+          nombre: 'read',
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => 'read',
+          motivoAprobacionObligatoria: () => 'Llamada repetida 3 veces',
+        },
+        {},
+      )
+      expect(ev.efecto).toBe('denegar')
+      expect(ev.obligatoria).toBe(false)
+    })
+
+    it('La aprobación combinada muestra ambos motivos', () => {
+      const gestor = new GestorPermisos({})
+      const motivoRep = 'Llamada repetida 3 veces'
+      const motivoRiesgo = 'Comando en lista negra'
+      const ev = gestor.evaluar(
+        {
+          nombre: 'shell',
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => 'shell',
+          motivoAprobacionObligatoria: () => `${motivoRep}. ${motivoRiesgo}`,
+        },
+        {},
+      )
+      expect(ev.obligatoria).toBe(true)
+      expect(ev.motivo).toContain(motivoRep)
+      expect(ev.motivo).toContain(motivoRiesgo)
+    })
+
+    it('La aprobación de repetición no guarda una regla', async () => {
+      const dir = mkdtempSync(join(tempDir, 'doom-loop-siempre-'))
+      const gestor = new GestorPermisos({
+        directorioProyecto: dir,
+        manejadorAprobacion: async () => 'siempre',
+      })
+      const decision = await gestor.solicitarAprobacion({
+        id: '1',
+        herramienta: 'read',
+        accion: 'doom_loop',
+        recurso: 'read',
+        patronSugerido: 'read',
+        obligatoria: true,
+        motivo: 'Llamada repetida',
+      })
+      expect(decision).toBe('una_vez')
+      expect(gestor.obtenerAprobacionesGuardadas()).toHaveLength(0)
+    })
+
+    it('Sin terminal no se ejecuta la repetición', async () => {
+      const gestor = new GestorPermisos({ esInteractivo: false })
+      const decision = await gestor.solicitarAprobacion({
+        id: '1',
+        herramienta: 'read',
+        accion: 'doom_loop',
+        recurso: 'read',
+        patronSugerido: 'read',
+        obligatoria: true,
+        motivo: 'Llamada repetida',
+      })
+      expect(decision).toBe('denegar')
     })
   })
 

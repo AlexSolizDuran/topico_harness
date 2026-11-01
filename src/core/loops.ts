@@ -40,6 +40,9 @@ export interface EvaluacionRacha {
   bloqueada: boolean
   conteo: number
   mensaje?: string | undefined
+  esRepeticion: boolean
+  firmaDenegada: boolean
+  firma: string
 }
 
 export const LIMITE_RACHA_IDENTICA = 3
@@ -48,9 +51,22 @@ export class DetectorLoops {
   private ultimaHerramienta?: string | undefined
   private ultimosArgumentos?: string | undefined
   private conteo = 0
+  private firmasDenegadas = new Set<string>()
 
   registrar(nombre: string, argumentos: unknown): EvaluacionRacha {
     const canonicos = canonicalizarArgumentos(argumentos)
+    const firma = `${nombre}:${canonicos}`
+
+    if (this.firmasDenegadas.has(firma)) {
+      return {
+        bloqueada: true,
+        conteo: this.conteo,
+        mensaje: `ERROR: La llamada a '${nombre}' con estos argumentos fue denegada previamente por repetición.\nLa operación no se completó.`,
+        esRepeticion: true,
+        firmaDenegada: true,
+        firma,
+      }
+    }
 
     if (
       this.ultimaHerramienta === nombre &&
@@ -63,18 +79,23 @@ export class DetectorLoops {
       this.conteo = 1
     }
 
-    if (this.conteo >= LIMITE_RACHA_IDENTICA) {
-      return {
-        bloqueada: true,
-        conteo: this.conteo,
-        mensaje: `ERROR: llamaste a ${nombre} con los mismos argumentos ${this.conteo} veces seguidas.\nEl resultado anterior no cambió. Cambiá de estrategia o respondé con lo que ya tenés.`,
-      }
-    }
+    const esRepeticion = this.conteo >= LIMITE_RACHA_IDENTICA
 
     return {
       bloqueada: false,
       conteo: this.conteo,
+      esRepeticion,
+      firmaDenegada: false,
+      firma,
     }
+  }
+
+  marcarFirmaDenegada(firma: string): void {
+    this.firmasDenegadas.add(firma)
+  }
+
+  estaFirmaDenegada(firma: string): boolean {
+    return this.firmasDenegadas.has(firma)
   }
 
   reiniciar(): void {

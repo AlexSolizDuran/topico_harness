@@ -49,6 +49,10 @@ const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
   'directorio externo': 'external_directory',
   skill: 'skill',
   hook: 'hook',
+  doom_loop: 'doom_loop',
+  detectar_repeticion: 'doom_loop',
+  'detectar repetición': 'doom_loop',
+  'detectar repeticion': 'doom_loop',
 }
 
 export function normalizarAccionPermiso(

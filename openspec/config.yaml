@@ -91,7 +91,7 @@ context: |
 
   FLUJO DE ESTE REPO
     `openspec/specs/` es el contrato acordado: 16 capacidades, 170 requisitos y
-    593 escenarios. Los 38 changes de `openspec/changes/archive/` ya están archivados.
+    606 escenarios. Los 39 changes de `openspec/changes/archive/` ya están archivados.
     Los changes de spec agregan o modifican requisitos y no llevan `skip_specs`.
     Los de implementacion y documentacion si lo llevan. Los changes IMPLEMENTAN
     contra esos requisitos, no los vuelven a derivar. Al proponer un change,
@@ -99,11 +99,11 @@ context: |
     `openspec show <cap> --type spec` y citar sus requisitos por nombre.
 
   ESTADO
-    16 capacidades, 170 requisitos, 593 escenarios. Todo validado contra el schema
+    16 capacidades, 170 requisitos, 606 escenarios. Todo validado contra el schema
     `spec-driven`.
     core (12) · provider (9) · tools (23) · context (15) · interface (25) · sesiones (11) · agents (6) · subagents (15) · permissions (9) · instructions (8) · skills (6) · hooks (6) · memory (7) · sandbox (6) · lsp (6) · mcp (6)
     IMPLEMENTADO: 12 de las 16 capacidades. `src/` y `tests/` existen, `npm run
-    check` pasa con 462 tests y `npm run build` genera `dist/main.js`. La prueba de
+    check` pasa con 475 tests y `npm run build` genera `dist/main.js`. La prueba de
     punta a punta contra OpenRouter paso en modo plano, con lectura real de
     archivos y cambio de modelo por `--modelo`. Pendientes de implementacion:
     memory, sandbox, lsp y mcp.

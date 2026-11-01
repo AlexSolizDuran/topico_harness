@@ -17,6 +17,7 @@ export type AccionPermisoCanon =
   | 'external_directory'
   | 'skill'
   | 'hook'
+  | 'doom_loop'
 
 export type AccionPermiso =
   | AccionPermisoCanon
@@ -35,6 +36,9 @@ export type AccionPermiso =
   | 'delegar'
   | 'directorio_externo'
   | 'directorio externo'
+  | 'detectar_repeticion'
+  | 'detectar repetición'
+  | 'detectar repeticion'
   | '*'
 
 export type EfectoPermiso = 'permitir' | 'consultar' | 'denegar'

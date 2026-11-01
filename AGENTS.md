@@ -13,7 +13,7 @@ cancela a mitad de tarea.
 
 La implementación cubre 12 de las 16 capacidades especificadas: los 31 changes de
 implementación de `openspec/changes/archive/` están implementados, más los changes
-de higiene y de specs. `src/` y `tests/` ya existen y `npm run check` pasa con 462
+de higiene y de specs. `src/` y `tests/` ya existen y `npm run check` pasa con 475
 tests. Los specs de `memory`, `sandbox`, `lsp` y `mcp` están acordados pero aún no
 implementados. La prueba de punta a punta contra OpenRouter también pasó, en modo
 plano y con herramientas reales.
@@ -24,13 +24,13 @@ plano y con herramientas reales.
 |---|---|
 | Capacidades | 16 |
 | Requisitos | 170 |
-| Escenarios | 593 |
-| Changes | 38 archivados (31 de implementación + 6 de specs + 1 de documentación), `npm run check` en verde (462 tests) |
+| Escenarios | 606 |
+| Changes | 39 archivados (31 de implementación + 7 de specs + 1 de documentación), `npm run check` en verde (475 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
 |---|---|---|---|
-| `core` | 12 | 41 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación, espera de aprobación, tandas paralelas, detección de bucles |
+| `core` | 12 | 47 | el bucle: iteración, historial atómico, despacho, validación, errores como texto, límite de pasos, cancelación, espera de aprobación, tandas paralelas, detección de bucles con aprobación obligatoria |
 | `provider` | 9 | 34 | la frontera con el modelo: interfaz agnóstica, traducción de eventos, reintentos, credencial por entorno (`.env`), conteo de tokens, cambio de modelo entre turnos y prefijo de petición estable |
 | `tools` | 23 | 87 | lectura, escritura, edición, búsqueda, ejecución `shell` por catálogo con aprobación obligatoria de lo riesgoso, redirecciones, archivos sensibles, delegación `task`, esquemas, acción/recurso de permiso, metadato de paralelo, truncado, rutas, salida como cola e información de aislamiento |
 | `context` | 15 | 52 | presupuesto en 5 etapas (aviso, enmascarado selectivo, poda, resumen por bloque y compactación), conteo, validación entre pasos, presupuesto independiente por subagente, recordatorios de sistema y las tres reglas que no se rompen |
@@ -38,7 +38,7 @@ plano y con herramientas reales.
 | `sesiones` | 11 | 24 | guardado incremental por turno, reanudación con historial y configuración, listado, credencial redactada, compactación como reemplazo, límite por proyecto, ramas desde un turno anterior y búsqueda por texto |
 | `agents` | 6 | 22 | perfiles declarativos de agente (`build`, `plan`, `explore`), modos (`primario`, `subagente`, `ambos`), filtrado estricto de herramientas, modelo propio, permisos y defaults |
 | `subagents` | 15 | 37 | delegación con contexto aislado, profundidad máxima 1, intersección de solo lectura, cancelación unidireccional, presupuesto/pasos/modelo propios y tareas en background con continuación del turno |
-| `permissions` | 9 | 39 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`), acciones para símbolos y herramientas externas y degradación sin TTY |
+| `permissions` | 9 | 46 | reglas ordenadas (`permitir`, `consultar`, `denegar`), aprobación obligatoria que ninguna regla salta, política base para `.env`, merge global + agente, aprobaciones (`una_vez`, `siempre`, `denegar`), acciones para símbolos y herramientas externas y degradación sin TTY |
 | `instructions` | 8 | 31 | carga automática del `AGENTS.md` raíz al arrancar y carga diferida de `AGENTS.md` anidados al explorar subdirectorios, topes de 32 KiB por archivo y 64 KiB total, herencia en subagentes |
 | `skills` | 6 | 21 | descubrimiento de `.opencode/skills/`, anuncio ligero en el prompt, herramienta `skill` bajo demanda sin recorte de contexto, permisos por identificador y panel `/skills` |
 | `hooks` | 6 | 25 | comandos externos en `sessionStart`, `sessionEnd`, `preTool`, `postTool` y `turnEnd`, códigos `0`/`1`/`2`, timeout de 30s, truncado a 8 KiB, sanitización de credenciales y permiso `hook` |

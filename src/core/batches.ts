@@ -1,5 +1,6 @@
 import type {
   EjecutorHooks,
+  EvaluacionPermiso,
   EventoTurno,
   Mensaje,
   PorteroPermisos,
@@ -12,12 +13,13 @@ import {
   type ResultadoDespacho,
   validarYFiltrarArgumentos,
 } from './dispatch.js'
-import type { DetectorLoops } from './loops.js'
+import type { DetectorLoops, EvaluacionRacha } from './loops.js'
 import type { RegistroHerramientas } from './registry.js'
 
 export interface LlamadaPreparada {
   llamada: SolicitudHerramienta
   bloqueoLoop?: string | undefined
+  racha?: EvaluacionRacha | undefined
   rechazoPrevio?: ResultadoDespacho | undefined
 }
 
@@ -74,6 +76,7 @@ async function* resolverPermisosDeTanda(
   registro: RegistroHerramientas,
   portero: PorteroPermisos | undefined,
   senalCancelacion: AbortSignal | undefined,
+  detectorLoops?: DetectorLoops | undefined,
 ): AsyncGenerator<EventoTurno, boolean, unknown> {
   if (!portero) return false
 
@@ -86,21 +89,71 @@ async function* resolverPermisosDeTanda(
     const validacion = validarYFiltrarArgumentos(args, herramienta.esquema)
     if (!validacion.valido) continue
 
-    const evaluacion = portero.evaluar(herramienta, validacion.filtrados)
-    if (evaluacion.efecto === 'permitir') continue
+    const esRepeticion = Boolean(item.racha?.esRepeticion)
+    let evaluacion: EvaluacionPermiso
 
-    if (evaluacion.efecto === 'denegar') {
-      item.rechazoPrevio = {
-        resultado: `ERROR: Permiso denegado para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.\nLa operación no se completó.`,
-        esError: true,
+    if (esRepeticion) {
+      const evalNormal = portero.evaluar(herramienta, validacion.filtrados)
+      if (evalNormal.efecto === 'denegar') {
+        item.rechazoPrevio = {
+          resultado: `ERROR: Permiso denegado para la acción '${evalNormal.accion}' sobre el recurso '${evalNormal.recurso}'.\nLa operación no se completó.`,
+          esError: true,
+        }
+        continue
       }
-      continue
+
+      const motivoRepeticion = `Llamada repetida ${item.racha?.conteo} veces consecutivas a '${item.llamada.nombre}' con los mismos argumentos.`
+      const motivoCombinado = evalNormal.motivo
+        ? `${motivoRepeticion} Motivo adicional: ${evalNormal.motivo}.`
+        : motivoRepeticion
+
+      evaluacion = portero.evaluar(
+        {
+          nombre: item.llamada.nombre,
+          accionPermiso: 'doom_loop',
+          obtenerRecurso: () => item.llamada.nombre,
+          motivoAprobacionObligatoria: () => motivoCombinado,
+        },
+        validacion.filtrados,
+      )
+
+      if (!evaluacion.motivo) {
+        evaluacion = {
+          ...evaluacion,
+          motivo: motivoCombinado,
+        }
+      }
+
+      if (evaluacion.efecto === 'denegar') {
+        item.rechazoPrevio = {
+          resultado: `ERROR: Permiso denegado para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.\nLa operación no se completó.`,
+          esError: true,
+        }
+        if (item.racha?.firma) {
+          detectorLoops?.marcarFirmaDenegada(item.racha.firma)
+        }
+        continue
+      }
+    } else {
+      evaluacion = portero.evaluar(herramienta, validacion.filtrados)
+      if (evaluacion.efecto === 'permitir') continue
+
+      if (evaluacion.efecto === 'denegar') {
+        item.rechazoPrevio = {
+          resultado: `ERROR: Permiso denegado para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.\nLa operación no se completó.`,
+          esError: true,
+        }
+        continue
+      }
     }
 
     if (!portero.solicitarAprobacion) {
       item.rechazoPrevio = {
         resultado: `ERROR: Se requiere aprobación interactiva para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}', pero no hay cliente interactivo.${evaluacion.motivo ? ` Motivo: ${evaluacion.motivo}.` : ''}\nLa operación no se completó.`,
         esError: true,
+      }
+      if (esRepeticion && item.racha?.firma) {
+        detectorLoops?.marcarFirmaDenegada(item.racha.firma)
       }
       continue
     }
@@ -111,7 +164,7 @@ async function* resolverPermisosDeTanda(
       accion: evaluacion.accion,
       recurso: evaluacion.recurso,
       patronSugerido: evaluacion.patronSugerido,
-      obligatoria: evaluacion.obligatoria,
+      obligatoria: esRepeticion || evaluacion.obligatoria,
       motivo: evaluacion.motivo,
     }
 
@@ -135,6 +188,9 @@ async function* resolverPermisosDeTanda(
       item.rechazoPrevio = {
         resultado: `ERROR: Aprobación denegada para la acción '${evaluacion.accion}' sobre el recurso '${evaluacion.recurso}'.${motivo}\nLa operación no se completó.`,
         esError: true,
+      }
+      if (esRepeticion && item.racha?.firma) {
+        detectorLoops?.marcarFirmaDenegada(item.racha.firma)
       }
     }
   }
@@ -319,13 +375,20 @@ export async function* ejecutarTandasDeHerramientas(
   ctx: ContextoEjecucionTandas,
 ): AsyncGenerator<EventoTurno, { cancelado: boolean }, unknown> {
   const bloqueoPorId = new Map<string, string>()
+  const rachaPorId = new Map<string, EvaluacionRacha>()
   for (const llamada of ctx.llamadas) {
     const racha = ctx.detectorLoops.registrar(
       llamada.nombre,
       llamada.argumentos,
     )
-    if (racha.bloqueada && racha.mensaje) {
+    rachaPorId.set(llamada.id, racha)
+    if (racha.firmaDenegada && racha.mensaje) {
       bloqueoPorId.set(llamada.id, racha.mensaje)
+    } else if (!ctx.portero && racha.esRepeticion) {
+      bloqueoPorId.set(
+        llamada.id,
+        `ERROR: llamaste a ${llamada.nombre} con los mismos argumentos ${racha.conteo} veces seguidas.\nEl resultado anterior no cambió. Cambiá de estrategia o respondé con lo que ya tenés.`,
+      )
     }
   }
 
@@ -340,6 +403,7 @@ export async function* ejecutarTandasDeHerramientas(
     const items: LlamadaPreparada[] = tanda.map((llamada) => ({
       llamada,
       bloqueoLoop: bloqueoPorId.get(llamada.id),
+      racha: rachaPorId.get(llamada.id),
     }))
 
     const genPermisos = resolverPermisosDeTanda(
@@ -347,6 +411,7 @@ export async function* ejecutarTandasDeHerramientas(
       ctx.registro,
       ctx.portero,
       ctx.senalCancelacion,
+      ctx.detectorLoops,
     )
     let iterPermiso = await genPermisos.next()
     while (!iterPermiso.done) {
