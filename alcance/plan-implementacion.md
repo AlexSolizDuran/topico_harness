@@ -1,9 +1,10 @@
 # Plan de implementación
 
-Cómo se baja de la escalera a código. **Todavía no hay OpenSpec**: este
-documento propone el orden y lo que va en cada change.
+Cómo se baja de la escalera a código. Este documento conserva el plan original de
+la v1. El contrato vigente vive en `openspec/specs/` y cubre 16 capacidades, 170
+requisitos y 593 escenarios.
 
-## El alcance de la v1
+## El alcance de la v1 original
 
 **"Lo básico + subagentes" son los niveles 0 a 3.**
 
@@ -17,7 +18,8 @@ documento propone el orden y lo que va en cada change.
 Quedan fuera: 4 (producción), 5 (configuración), 6 (contexto fino), 7
 (seguridad), 8 (memoria).
 
-**Son 4 capacidades, no 8.** Ese es el alcance.
+**En el plan original eran 4 capacidades, no 8.** El alcance acordado hoy es de
+16 capacidades; los niveles 4 a 8 también están especificados en `openspec/specs/`.
 
 ## Los cuatro changes
 
@@ -183,8 +185,9 @@ openspec new change 010-nucleo
 /opsx-archive              # lo mueve a changes/archive/
 ```
 
-Cada change lleva `skip_specs: true` en su `.openspec.yaml`: no introduce
-comportamiento nuevo, materializa lo especificado. Sin ese marcador,
+Cada change de implementación lleva `skip_specs: true` en su `.openspec.yaml`: no
+introduce comportamiento nuevo, materializa lo especificado. Los changes de spec
+no llevan ese marcador porque agregan o modifican requisitos. Sin `skip_specs`,
 `openspec validate` rechaza un change con cero deltas.
 
 ## Orden de los cambios, revisado

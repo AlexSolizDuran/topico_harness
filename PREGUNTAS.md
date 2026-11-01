@@ -1,8 +1,9 @@
 # Preguntas y decisiones
 
-Lo que quedó por decidir y el registro de lo ya decidido. Las 12 capacidades de
-`openspec/specs/` están implementadas; ninguna decisión abierta bloquea el
-funcionamiento actual.
+Lo que quedó por decidir y el registro de lo ya decidido. Las 16 capacidades de
+`openspec/specs/` están especificadas: 12 implementadas y 4 pendientes (`memory`,
+`sandbox`, `lsp` y `mcp`). Ninguna decisión abierta bloquea el funcionamiento
+actual.
 
 ## Resueltas
 
@@ -40,15 +41,15 @@ para decidir, solo para avisar.
 
 ### La interfaz sí es una capacidad
 
-**Decidido.** `interface` es uno de los 12 specs, con 22 requisitos. El que la hace
+**Decidido.** `interface` es uno de los 16 specs, con 25 requisitos. El que la hace
 viable es *"sin terminal interactiva, degrada a salida línea a línea"*.
 
 ### Nombres de las capacidades en inglés
 
 **Decidido.** `core`, `provider`, `tools`, `context`, `interface`, `sesiones`,
-`agents`, `subagents`, `permissions`, `instructions`, `skills` y `hooks`. Los
-requisitos van escritos en español con los marcadores estructurales en inglés,
-porque el CLI los parsea.
+`agents`, `subagents`, `permissions`, `instructions`, `skills`, `hooks`, `memory`,
+`sandbox`, `lsp` y `mcp`. Los requisitos van escritos en español con los marcadores
+estructurales en inglés, porque el CLI los parsea.
 
 ### ¿Los subagentes heredan el contexto del padre?
 
@@ -64,8 +65,9 @@ presupuesto/límite de pasos propios. Heredan el conjunto de instrucciones
 **Resuelto (`170-permisos`, `270-skills`, `290-hooks`).** `write`, `edit` y
 `apply_patch` comparten la acción de permiso `edit` y pasan por el mismo gate
 declarativo de permisos (`permitir | consultar | denegar`) que `shell`, `read`,
-`glob`, `grep`, `subagent`, `skill`, `hook` y `external_directory`. La herramienta
-de ejecución se unificó bajo el nombre `shell` en Linux, macOS y Windows.
+`glob`, `grep`, `subagent`, `skill`, `hook`, `external_directory`, `leer símbolos` y
+`usar herramienta externa`. La herramienta de ejecución se unificó bajo el nombre
+`shell` en Linux, macOS y Windows.
 
 ### ¿Cuántos reintentos antes de rendirse?
 
@@ -107,6 +109,25 @@ presupuesto (por defecto `70%` aviso, `80%` enmascarado selectivo de salidas
 viejos de solo lectura sin texto del asistente, `90%` resumen solo del bloque más
 antiguo y `99%` compactación completa).
 
+### ¿Qué entra en los specs nuevos?
+
+**Resuelto (`315` a `350`).** `memory` guarda memoria del proyecto por defecto y
+admite ámbito de usuario; un archivo que supera el tope falla en vez de truncarse.
+`sandbox` aísla por herramienta; en Windows, si no hay aislamiento disponible,
+degrada con un aviso visible y no finge. `lsp` y `mcp` declaran servidores en la
+configuración, fallan como texto y respetan permisos; las herramientas MCP piden
+aprobación obligatoria. Las acciones de permiso `leer símbolos` y
+`usar herramienta externa` se suman a las existentes.
+
 ## Postergadas
 
 Se resuelven más adelante. Ninguna bloquea.
+
+- **Worktrees.** No entran en la v1: el aislamiento de archivos se resuelve con
+  ramas de sesión y el directorio de trabajo actual.
+- **Plugins JS de hooks.** Los hooks son comandos externos; un sistema de plugins
+  queda para después.
+- **Transporte remoto MCP.** Solo se especifican servidores MCP locales
+  declarados en la configuración.
+- **Sincronización entre dispositivos de la memoria.** La memoria es local al
+  proyecto y, opcionalmente, al usuario.

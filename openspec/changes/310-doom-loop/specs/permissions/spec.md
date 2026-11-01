@@ -6,14 +6,18 @@
 El sistema SHALL evaluar el permiso por acción y no por el nombre de la herramienta.
 Las acciones SHALL ser leer, buscar archivos, buscar texto, editar, ejecutar,
 ejecutar compuesto, ejecutar con redirección, delegar, directorio externo, cargar
-skill, ejecutar hook y detectar repetición. La acción de editar SHALL cubrir tanto
-escribir como editar un archivo. La acción de ejecutar compuesto SHALL cubrir una
+skill, ejecutar hook, leer símbolos, usar herramienta externa y detectar repetición.
+La acción de editar SHALL cubrir tanto escribir como editar un archivo. La acción de ejecutar compuesto SHALL cubrir una
 línea que encadena comandos y una invocación a un intérprete que ejecuta código con
 una bandera. La acción de ejecutar con redirección SHALL cubrir una línea que
 redirija a un archivo, use un heredoc, un herestring o una sustitución de proceso.
 La acción de cargar skill SHALL cubrir la entrega del cuerpo de una skill y SHALL
 usar su identificador como recurso. La acción de ejecutar hook SHALL cubrir la
 ejecución de un hook y SHALL usar el nombre del evento como recurso. La acción de
+leer símbolos SHALL cubrir las operaciones de un servidor de lenguaje y SHALL usar
+la operación y el archivo como recurso. La acción de usar herramienta externa SHALL
+cubrir la ejecución de una herramienta de un servidor MCP y SHALL usar el servidor
+y la herramienta como recurso. La acción de
 detectar repetición SHALL cubrir la tercera llamada consecutiva con la misma
 herramienta y los mismos argumentos y SHALL usar el nombre de la herramienta como
 recurso. La acción SHALL resolverse con los argumentos de la llamada, de modo que
@@ -42,6 +46,14 @@ la misma herramienta pueda usar una acción u otra según lo que se le pide.
 #### Scenario: Skill y hook tienen acciones propias
 - **WHEN** una regla deniega cargar una skill concreta y otra permite ejecutar un hook concreto
 - **THEN** la skill se deniega y el hook se ejecuta, cada uno evaluado con su propia acción y su propio recurso
+
+#### Scenario: La operación de lenguaje tiene una acción propia
+- **WHEN** el modelo pide una operación de lenguaje
+- **THEN** el permiso se evalúa con la acción de leer símbolos y la operación y el archivo como recurso
+
+#### Scenario: La herramienta externa tiene una acción propia
+- **WHEN** el modelo llama a una herramienta de un servidor MCP
+- **THEN** el permiso se evalúa con la acción de usar herramienta externa y el servidor y la herramienta como recurso
 
 #### Scenario: La repetición tiene una acción propia
 - **WHEN** el núcleo detecta la tercera llamada idéntica

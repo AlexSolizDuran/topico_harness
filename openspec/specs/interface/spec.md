@@ -444,3 +444,42 @@ de la sesión.
 #### Scenario: El panel no inicia un turno
 - **WHEN** la persona ejecuta `/skills`
 - **THEN** la sesión no inicia un turno y el estado del turno no cambia
+
+### Requirement: La interfaz conserva la salida completa de la herramienta de ejecución
+La interfaz SHALL conservar y mostrar la salida completa de la herramienta de
+ejecución, aunque el modelo reciba solo una cola. La salida completa SHALL quedar
+disponible para la persona después de que el turno termine o se cancele. La
+interfaz SHALL NOT presentar la cola del modelo como si fuera la salida completa.
+
+#### Scenario: Salida grande
+- **WHEN** el modelo recibe una cola de una salida larga
+- **THEN** la interfaz conserva y muestra la salida completa
+
+#### Scenario: Salida pequeña
+- **WHEN** la salida cabe en el límite
+- **THEN** la interfaz y el modelo reciben la misma salida completa
+
+#### Scenario: La salida completa sobrevive al turno
+- **WHEN** el turno termina o se cancela después de una salida larga
+- **THEN** la persona puede seguir consultando la salida completa
+
+#### Scenario: La interfaz no confunde la cola con la salida completa
+- **WHEN** la interfaz muestra el resultado de una ejecución larga
+- **THEN** indica que el modelo recibió solo una cola y no presenta esa cola como el total
+
+### Requirement: La interfaz informa cuando la ejecución no está aislada
+La interfaz SHALL mostrar un aviso visible cuando la ejecución no está aislada.
+El aviso SHALL indicar el motivo y SHALL mantenerse visible durante el turno. La
+interfaz SHALL NOT mostrar el aviso como un error fatal.
+
+#### Scenario: Plataforma sin aislamiento
+- **WHEN** la plataforma no ofrece aislamiento y se ejecuta un comando
+- **THEN** la interfaz muestra el aviso correspondiente
+
+#### Scenario: Aislamiento deshabilitado
+- **WHEN** la configuración deshabilita el aislamiento
+- **THEN** la interfaz muestra el aviso con ese motivo
+
+#### Scenario: El aviso no es fatal
+- **WHEN** la interfaz muestra el aviso de ejecución no aislada
+- **THEN** el turno sigue en curso y la sesión no se cancela

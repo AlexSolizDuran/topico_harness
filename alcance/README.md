@@ -4,9 +4,11 @@ Documento de referencia. Define **qué es un harness**, cómo se construyen por
 niveles, y qué entra en cada uno. Es la referencia de alcance; la especificación
 formal vive en `openspec/specs/`.
 
-El contrato está implementado: las 9 capacidades de `openspec/specs/` — `core`,
-`provider`, `tools`, `context`, `interface`, `sesiones`, `agents`, `subagents` y
-`permissions` — están materializadas en `src/` y cubiertas por tests.
+El contrato acordado tiene 16 capacidades, 170 requisitos y 593 escenarios. Doce
+están implementadas y cubiertas por tests: `core`, `provider`, `tools`, `context`,
+`interface`, `sesiones`, `agents`, `subagents`, `permissions`, `instructions`,
+`skills` y `hooks`. Cuatro están especificadas y pendientes de implementación:
+`memory`, `sandbox`, `lsp` y `mcp`.
 
 **Si los dos se contradicen, el spec manda.** Este documento explica el porqué de
 cada decisión; el spec dice qué tiene que hacer el sistema.
@@ -93,9 +95,9 @@ Para saber que no te falta pieza. Esto es el techo real, no un objetivo.
 |---|---|---|---|
 | Claude Code | 43 | 144 Ink | hooks (26 eventos), sandbox, memoria, LSP, MCP |
 | OpenCode | ~12 | — | agentes nombrados, permisos, worktrees, LSP |
-| **Este harness, v1** | **6** | **~10** | — |
+| **Este harness, especificado** | **8** | **~10** | hooks, permisos, sesiones, skills; especificados: sandbox, LSP, MCP, memoria |
 
-La distancia entre 6 tools y 43 es de meses, no de días. Sirve para saber que
+La distancia entre 8 tools y 43 es de meses, no de días. Sirve para saber que
 no te falta nada, no para copiarse.
 
 ## La escalera
