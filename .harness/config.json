@@ -5,6 +5,13 @@
     "guardar": true,
     "maximo": 50
   },
+  "hooks": {
+    "sessionStart": [],
+    "preTool": [],
+    "postTool": [],
+    "turnEnd": [],
+    "sessionEnd": []
+  },
   "proveedores": {
     "openrouter": {
       "tipo": "openai-compatible",
@@ -67,3 +74,4 @@
     }
   }
 }
+

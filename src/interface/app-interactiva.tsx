@@ -8,6 +8,7 @@ import type {
 import {
   Aviso,
   BarraEstado,
+  Cabecera,
   CajaEntrada,
   ComponenteElemento,
   MensajeAsistente,
@@ -521,7 +522,11 @@ export function AppInteractiva({
 
   return (
     <Box flexDirection="column">
-      <BarraEstado estado={estado} directorio={directorio} />
+      <Cabecera
+        directorio={directorio}
+        sesionId={estado.sesionId}
+        tareasBackground={estado.tareasBackground}
+      />
 
       <Static items={estado.historial}>
         {(elemento) => (
@@ -596,6 +601,7 @@ export function AppInteractiva({
 
       <CajaEntrada entrada={entrada} turnoEnCurso={estado.turnoEnCurso} />
       <PieAtajos turnoEnCurso={estado.turnoEnCurso} />
+      <BarraEstado estado={estado} />
     </Box>
   )
 }

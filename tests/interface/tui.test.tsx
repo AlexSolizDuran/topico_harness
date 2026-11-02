@@ -1,4 +1,4 @@
-import { renderToString } from 'ink'
+import { Box, renderToString } from 'ink'
 import { describe, expect, it } from 'vitest'
 import { PresupuestoContexto } from '../../src/context/budget.js'
 import { medirContexto } from '../../src/context/metrics.js'
@@ -6,6 +6,9 @@ import { RegistroHerramientas } from '../../src/core/registry.js'
 import {
   BarraEstado,
   CajaEntrada,
+  calcularUsoTokens,
+  MensajeAsistente,
+  MensajeUsuario,
   PaletaComandos,
   PanelAyuda,
   PanelContexto,
@@ -43,7 +46,8 @@ describe('TUI', () => {
 
     expect(salida).toContain('openrouter/openai/gpt-4o')
     expect(salida).toContain('listo')
-    expect(salida).toContain('/proyecto')
+    expect(salida).toContain('proyecto')
+    expect(salida).not.toContain('/proyecto')
     expect(salida).toContain('Enter envía')
     expect(salida).toContain('Shift+Enter')
     expect(salida).toContain('/ comandos')
@@ -207,6 +211,58 @@ describe('TUI', () => {
     expect(salida).toContain('skill:revisar-pr')
     expect(salida).toContain('disponible')
     expect(salida).toContain('rota: falta description')
+  })
+
+  it('la barra inferior muestra el modelo a la izquierda y los tokens a la derecha', () => {
+    const presupuesto = new PresupuestoContexto({
+      ventanaContexto: 10000,
+      porcentajeLimite: 0.8,
+    })
+    const contexto = medirContexto(
+      presupuesto,
+      [{ rol: 'user', contenido: 'x'.repeat(400) }],
+      undefined,
+      0,
+    )
+    const estado = crearEstadoInicial(
+      '',
+      'openrouter/openai/gpt-4o',
+      contexto,
+      'build',
+    )
+
+    const salida = renderToString(<BarraEstado estado={estado} />)
+
+    expect(salida).toContain('modelo: openrouter/openai/gpt-4o')
+    expect(salida).toContain('100/8k Tokens (1%)')
+    expect(salida).not.toContain('/proyecto')
+    expect(salida).not.toContain('libres')
+  })
+
+  it('el color del uso de tokens depende de lo que queda', () => {
+    expect(calcularUsoTokens(0, 1000).color).toBe('green')
+    expect(calcularUsoTokens(750, 1000).color).toBe('yellow')
+    expect(calcularUsoTokens(950, 1000).color).toBe('red')
+    expect(calcularUsoTokens(0, 0).color).toBe('gray')
+  })
+
+  it('los mensajes van en la misma columna con un distintivo por rol', () => {
+    const salida = renderToString(
+      <Box flexDirection="column" width={70}>
+        <MensajeUsuario texto="pedido del usuario" />
+        <MensajeAsistente texto="respuesta del modelo" />
+      </Box>,
+    )
+    const lineas = salida.split('\n')
+    const lineaUsuario =
+      lineas.find((linea) => linea.includes('pedido del usuario')) ?? ''
+    const lineaAsistente =
+      lineas.find((linea) => linea.includes('respuesta del modelo')) ?? ''
+
+    expect(salida).toContain('● usuario')
+    expect(salida).toContain('● modelo')
+    expect(lineaUsuario.indexOf('pedido del usuario')).toBeLessThan(10)
+    expect(lineaAsistente.indexOf('respuesta del modelo')).toBeLessThan(10)
   })
 
   it('PanelContexto muestra costo de skills, etapa aplicada y tokens recuperados, y PanelAyuda lista /skills', () => {

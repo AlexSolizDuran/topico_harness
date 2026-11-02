@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { Box, Text } from 'ink'
 import type React from 'react'
 import type { DefinicionAgente } from '../agents/definiciones.js'
@@ -23,6 +24,48 @@ export function formatearTokens(tokens: number): string {
   return `${tokens}`
 }
 
+/**
+ * Variante para la barra de estado: evita el ".0" que ocupa espacio sin aportar
+ * información cuando el número es redondo.
+ */
+export function formatearTokensCompacto(tokens: number): string {
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  }
+  return `${tokens}`
+}
+
+export type ColorUsoTokens = 'red' | 'yellow' | 'green' | 'gray'
+
+export interface UsoTokensVisual {
+  porcentaje: number
+  porcentajeLibre: number
+  color: ColorUsoTokens
+  relleno: number
+}
+
+/**
+ * El color se decide por lo que queda, no por lo consumido: verde mientras haya
+ * margen cómodo, amarillo cuando el margen se acorta y rojo cuando el próximo
+ * turno puede quedar sin espacio.
+ */
+export function calcularUsoTokens(
+  usados: number,
+  limite: number,
+): UsoTokensVisual {
+  if (limite <= 0) {
+    return { porcentaje: 0, porcentajeLibre: 100, color: 'gray', relleno: 0 }
+  }
+
+  const porcentaje = Math.min(100, Math.round((usados / limite) * 100))
+  const porcentajeLibre = Math.max(0, 100 - porcentaje)
+  const color: ColorUsoTokens =
+    porcentajeLibre <= 10 ? 'red' : porcentajeLibre <= 30 ? 'yellow' : 'green'
+  const relleno = Math.min(10, Math.max(0, Math.round((usados / limite) * 10)))
+
+  return { porcentaje, porcentajeLibre, color, relleno }
+}
+
 function formatearValor(valor: unknown): string {
   if (typeof valor === 'string') return valor
   try {
@@ -44,9 +87,9 @@ export function resumirArgumentos(
 }
 
 export const MensajeUsuario: React.FC<{ texto: string }> = ({ texto }) => (
-  <Box marginY={1}>
+  <Box flexDirection="column" marginY={1}>
     <Text bold color="green">
-      ›{' '}
+      ● usuario
     </Text>
     <Text>{texto}</Text>
   </Box>
@@ -56,15 +99,20 @@ export const MensajeAsistente: React.FC<{
   texto: string
   enCurso?: boolean
 }> = ({ texto, enCurso = false }) => (
-  <Box marginY={1}>
-    {enCurso ? <Text color="cyan">{texto}</Text> : <Text>{texto}</Text>}
-    {enCurso ? <Text color="cyan">▌</Text> : null}
+  <Box flexDirection="column" marginY={1}>
+    <Text bold color={enCurso ? 'yellow' : 'cyan'}>
+      ● {enCurso ? 'modelo · escribiendo…' : 'modelo'}
+    </Text>
+    <Text color={enCurso ? 'cyan' : 'white'}>
+      {texto}
+      {enCurso ? '▌' : ''}
+    </Text>
   </Box>
 )
 
 export const Aviso: React.FC<{ texto: string }> = ({ texto }) => (
   <Box marginY={0}>
-    <Text color="yellow">! {texto}</Text>
+    <Text color="yellow">⚠ {texto}</Text>
   </Box>
 )
 
@@ -226,57 +274,79 @@ export const ComponenteElemento: React.FC<{ elemento: ElementoVisual }> = ({
   return <Aviso texto={elemento.texto} />
 }
 
-export interface PropsBarraEstado {
-  estado: EstadoSesionVisual
+export const Cabecera: React.FC<{
   directorio?: string | undefined
+  sesionId?: string | undefined
+  tareasBackground?: number | undefined
+}> = ({ directorio, sesionId, tareasBackground = 0 }) => {
+  const proyecto = directorio ? basename(directorio) : ''
+  const secundaria = [
+    sesionId ? `ses ${sesionId}` : '',
+    tareasBackground > 0 ? `${tareasBackground} bg` : '',
+  ]
+    .filter((parte) => parte.length > 0)
+    .join(' · ')
+  return (
+    <Box paddingX={1} marginBottom={1}>
+      <Text>
+        <Text bold color="cyan">
+          ◆ harness
+        </Text>
+        <Text color="gray"> · {proyecto || 'tu agente en la terminal'}</Text>
+        {secundaria ? <Text color="gray"> · {secundaria}</Text> : null}
+      </Text>
+    </Box>
+  )
 }
 
-export const BarraEstado: React.FC<PropsBarraEstado> = ({
-  estado,
-  directorio,
-}) => {
+export interface PropsBarraEstado {
+  estado: EstadoSesionVisual
+}
+
+export const BarraEstado: React.FC<PropsBarraEstado> = ({ estado }) => {
   const contexto = estado.contexto
   const usados = contexto.tokensActuales
   const limite = contexto.limitePresupuesto
-  const uso = `${formatearTokens(usados)}/${formatearTokens(limite)}`
-  const porcentaje =
-    limite > 0 ? Math.min(100, Math.round((usados / limite) * 100)) : 0
-  const colorTokens =
-    porcentaje >= 95 ? 'red' : porcentaje >= 80 ? 'yellow' : 'green'
+  const uso = `${formatearTokensCompacto(usados)}/${formatearTokensCompacto(limite)}`
+  const { porcentaje, color, relleno } = calcularUsoTokens(usados, limite)
+  const barraLlena = '█'.repeat(relleno)
+  const barraVacia = '░'.repeat(10 - relleno)
   const modelo = estado.modeloActivo || 'sin modelo'
   const etiquetaEstado = estado.esperandoAprobacion
     ? 'esperando aprobación'
     : estado.turnoEnCurso
       ? 'trabajando'
       : 'listo'
-  const agente = estado.agenteActivo || 'build'
-  const tareasBackground = estado.tareasBackground ?? 0
+  const colorEstado =
+    estado.esperandoAprobacion || estado.turnoEnCurso ? 'yellow' : 'green'
 
   return (
     <Box
-      borderStyle="single"
+      flexDirection="column"
+      borderStyle="round"
       borderColor="gray"
-      justifyContent="space-between"
       paddingX={1}
     >
-      <Text color={colorTokens}>
-        {modelo} · Tokens: {uso} · {porcentaje}%
-        {contexto.esEstimado ? ' (est.)' : ''}
-      </Text>
-      {directorio ? (
-        <Text color="gray" wrap="truncate">
-          {directorio}
+      <Box justifyContent="space-between" width="100%">
+        <Text wrap="truncate">
+          <Text bold color="cyan">
+            modelo:{' '}
+          </Text>
+          <Text bold>{modelo}</Text>
         </Text>
-      ) : null}
-      <Text
-        color={
-          estado.esperandoAprobacion || estado.turnoEnCurso ? 'yellow' : 'green'
-        }
-      >
-        [{agente}]{estado.sesionId ? ` · ses ${estado.sesionId}` : ''}
-        {tareasBackground > 0 ? ` · ${tareasBackground} bg` : ''} ·{' '}
-        {etiquetaEstado}
-      </Text>
+        <Box>
+          <Text bold color={color}>
+            {uso} Tokens ({porcentaje}%)
+          </Text>
+          {contexto.esEstimado ? <Text color="gray"> est.</Text> : null}
+          <Text> </Text>
+          <Text color={color}>{barraLlena}</Text>
+          <Text color="gray">{barraVacia}</Text>
+        </Box>
+      </Box>
+      <Box width="100%">
+        <Text color={colorEstado}>● {etiquetaEstado}</Text>
+      </Box>
     </Box>
   )
 }
@@ -641,6 +711,22 @@ export const CajaEntrada: React.FC<{
     return { linea, clave }
   })
 
+  if (entrada.buffer.length === 0) {
+    return (
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={turnoEnCurso ? 'gray' : 'green'}
+        paddingX={1}
+        marginTop={1}
+      >
+        <Text color="gray">
+          {turnoEnCurso ? '⏳ esperando al modelo…' : '› Escribí tu pedido…'}
+        </Text>
+      </Box>
+    )
+  }
+
   return (
     <Box
       flexDirection="column"
@@ -699,7 +785,7 @@ export const AppHarness: React.FC<{ estado: EstadoSesionVisual }> = ({
 
   return (
     <Box flexDirection="column" padding={1}>
-      <BarraEstado estado={estado} />
+      <Cabecera />
 
       {estado.historial.map((elem) => (
         <ComponenteElemento key={elem.id} elemento={elem} />
@@ -723,6 +809,8 @@ export const AppHarness: React.FC<{ estado: EstadoSesionVisual }> = ({
       {estado.turnoEnCurso &&
         tarjetasActivas.length === 0 &&
         !estado.aprobacionPendiente && <Text color="gray">Pensando…</Text>}
+
+      <BarraEstado estado={estado} />
     </Box>
   )
 }

@@ -149,11 +149,11 @@ sistema SHALL aceptar un pedido inicial como argumentos de la invocación.
 - **THEN** el sistema queda a la espera de que la persona escriba
 
 ### Requirement: La interfaz muestra el estado de la sesión
-El sistema SHALL mostrar el modelo activo, el agente activo, el directorio de
-trabajo y si hay un turno en curso. El sistema SHALL actualizar ese estado cuando
-cambie el modelo, cuando cambie el agente o cuando empiece o termine un turno. El
-sistema SHALL mostrar cuando el turno espera una aprobación. El sistema SHALL NOT
-presentar el turno como inactivo mientras siga en curso.
+El sistema SHALL mostrar el modelo activo, el directorio de trabajo y si hay un
+turno en curso. El sistema SHALL actualizar ese estado cuando cambie el modelo o
+cuando empiece o termine un turno. El sistema SHALL mostrar cuando el turno espera
+una aprobación. El sistema SHALL NOT presentar el turno como inactivo mientras siga
+en curso.
 
 #### Scenario: Sesión lista
 - **WHEN** no hay un turno en curso
@@ -162,10 +162,6 @@ presentar el turno como inactivo mientras siga en curso.
 #### Scenario: Sesión trabajando
 - **WHEN** hay un turno en curso
 - **THEN** la interfaz muestra que está trabajando y no la presenta como lista
-
-#### Scenario: La barra muestra el agente activo
-- **WHEN** la sesión tiene un agente activo
-- **THEN** la barra de estado muestra su nombre junto al modelo
 
 #### Scenario: La barra muestra la espera de aprobación
 - **WHEN** el turno espera una aprobación
@@ -370,9 +366,9 @@ La interfaz SHALL mostrar el identificador de la sesión activa cuando el guarda
 está habilitado. Sin terminal interactiva, el modo línea a línea SHALL informar el
 identificador al iniciar o reanudar.
 
-#### Scenario: La barra de estado muestra la sesión
+#### Scenario: La interfaz muestra la sesión
 - **WHEN** hay una sesión activa guardada
-- **THEN** la barra de estado muestra su identificador
+- **THEN** la interfaz muestra su identificador
 
 #### Scenario: El modo línea a línea informa la sesión
 - **WHEN** se inicia o reanuda una sesión sin terminal interactiva
@@ -383,9 +379,9 @@ La interfaz SHALL mostrar cuántas tareas en background siguen en curso. Cuando 
 última termina, el indicador SHALL desaparecer o quedar en cero. La espera al cerrar
 el turno SHALL ser visible como un aviso.
 
-#### Scenario: La barra muestra tareas en curso
+#### Scenario: La interfaz muestra tareas en curso
 - **WHEN** hay una o más tareas en background en curso
-- **THEN** la barra de estado muestra su cantidad
+- **THEN** la interfaz muestra su cantidad
 
 #### Scenario: La espera al cerrar el turno es visible
 - **WHEN** el turno del padre termina y espera tareas en background

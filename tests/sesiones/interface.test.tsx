@@ -6,7 +6,7 @@ import { render, renderToString } from 'ink'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { construirHarness } from '../../src/app.js'
 import { RegistroHerramientas } from '../../src/core/registry.js'
-import { BarraEstado } from '../../src/interface/app.js'
+import { Cabecera } from '../../src/interface/app.js'
 import { AppInteractiva } from '../../src/interface/app-interactiva.js'
 import { formatearAvisoSesion } from '../../src/interface/plain.js'
 import { SesionInteractiva } from '../../src/interface/runner.js'
@@ -204,7 +204,7 @@ describe('interface Specification Tests — sesiones', () => {
   // Requirement: La interfaz muestra la sesión activa
   // -------------------------------------------------------------------------
   describe('Requirement: La interfaz muestra la sesión activa', () => {
-    it('La barra de estado muestra la sesión', () => {
+    it('La interfaz muestra la sesión', () => {
       // WHEN hay una sesión activa guardada
       const estado = crearEstadoInicial(
         '',
@@ -216,8 +216,8 @@ describe('interface Specification Tests — sesiones', () => {
         },
       )
 
-      // THEN la barra de estado muestra su identificador
-      expect(renderToString(<BarraEstado estado={estado} />)).toContain(
+      // THEN la interfaz muestra su identificador
+      expect(renderToString(<Cabecera sesionId={estado.sesionId} />)).toContain(
         'ses sesion-1',
       )
     })

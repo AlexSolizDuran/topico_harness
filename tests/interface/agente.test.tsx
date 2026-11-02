@@ -58,9 +58,8 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
 
       const salida = renderToString(<BarraEstado estado={estado} />)
 
-      // THEN la barra muestra el modelo activo, el agente activo, que la sesión está lista y el uso de contexto
+      // THEN la barra muestra el modelo activo, que la sesión está lista y el uso de contexto
       expect(salida).toContain('openrouter/openai/gpt-4o')
-      expect(salida).toContain('[build]')
       expect(salida).toContain('listo')
       expect(salida).toContain('0/3.2k')
     })
@@ -78,26 +77,6 @@ describe('interface Agent, Subagent, Permission and Batch Tests', () => {
 
       // THEN la barra muestra que la sesión está trabajando
       expect(salida).toContain('trabajando')
-      expect(salida).toContain('[plan]')
-    })
-
-    it('La barra muestra el agente activo', () => {
-      // WHEN se cambia de agente
-      const sesion = new SesionInteractiva({
-        proveedor: new ProveedorSimulado(),
-        registro: new RegistroHerramientas(),
-        agentes: crearAgentesPorDefecto(HERRAMIENTAS_BASE),
-        agenteActivo: 'build',
-      })
-
-      sesion.cambiarAgente('plan')
-      const salida = renderToString(
-        <BarraEstado estado={sesion.obtenerEstado()} />,
-      )
-
-      // THEN la barra refleja el nombre del nuevo agente activo
-      expect(salida).toContain('[plan]')
-      expect(salida).not.toContain('[build]')
     })
 
     it('La barra muestra la espera de aprobación', () => {

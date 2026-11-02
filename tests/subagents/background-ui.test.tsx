@@ -1,7 +1,7 @@
 import { renderToString } from 'ink'
 import { describe, expect, it } from 'vitest'
 import { RegistroHerramientas } from '../../src/core/registry.js'
-import { BarraEstado } from '../../src/interface/app.js'
+import { Cabecera } from '../../src/interface/app.js'
 import { SesionInteractiva } from '../../src/interface/runner.js'
 import { crearEstadoInicial } from '../../src/interface/state.js'
 import { ProveedorSimulado } from '../../src/provider/index.js'
@@ -12,7 +12,7 @@ describe('interface Specification Tests — background', () => {
   // Requirement: La interfaz muestra las tareas en background activas
   // -------------------------------------------------------------------------
   describe('Requirement: La interfaz muestra las tareas en background activas', () => {
-    it('La barra muestra tareas en curso', () => {
+    it('La interfaz muestra tareas en curso', () => {
       // WHEN hay una o más tareas en background en curso
       const estado = {
         ...crearEstadoInicial(
@@ -24,8 +24,10 @@ describe('interface Specification Tests — background', () => {
         tareasBackground: 2,
       }
 
-      // THEN la barra de estado muestra su cantidad
-      expect(renderToString(<BarraEstado estado={estado} />)).toContain('2 bg')
+      // THEN la interfaz muestra su cantidad
+      expect(
+        renderToString(<Cabecera tareasBackground={estado.tareasBackground} />),
+      ).toContain('2 bg')
     })
 
     it('La espera al cerrar el turno es visible', async () => {
