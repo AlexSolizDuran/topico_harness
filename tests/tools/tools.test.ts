@@ -1095,4 +1095,115 @@ describe('tools Specification Tests', () => {
       expect(registro.obtener('personalizada')?.admiteParalelo).toBeFalsy()
     })
   })
+
+  // --------------------------------------------------------------------------
+  // Requirement: La salida de la herramienta de ejecución se entrega como cola
+  // --------------------------------------------------------------------------
+  describe('Requirement: La salida de la herramienta de ejecución se entrega como cola', () => {
+    it('Salida grande', async () => {
+      // WHEN un comando produce una salida mayor que el límite configurado
+      const limite = 100
+      const salidaLarga = 'A'.repeat(150) + 'FINAL_SALIDA'
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: limite,
+        ejecutor: async () => ({
+          salida: salidaLarga,
+          codigoSalida: 0,
+        }),
+      })
+
+      const res = await toolShell!.ejecutar({ comando: 'test-grande' })
+
+      // THEN el modelo recibe los últimos N caracteres y una marca con la cantidad omitida
+      expect(res).toContain('caracteres omitidos')
+      expect(res).toContain('FINAL_SALIDA')
+      expect(res.endsWith('FINAL_SALIDA')).toBe(true)
+    })
+
+    it('Dos comandos no se mezclan', async () => {
+      // WHEN dos comandos del mismo turno producen salidas largas
+      const limite = 100
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: limite,
+        ejecutor: async (cmd) => ({
+          salida:
+            cmd === 'cmd1'
+              ? '1'.repeat(200) + '_FIN1'
+              : '2'.repeat(200) + '_FIN2',
+          codigoSalida: 0,
+        }),
+      })
+
+      const res1 = await toolShell!.ejecutar({ comando: 'cmd1' })
+      const res2 = await toolShell!.ejecutar({ comando: 'cmd2' })
+
+      // THEN la cola de cada comando se entrega por separado y no se mezcla con la del otro
+      expect(res1).toContain('_FIN1')
+      expect(res1).not.toContain('_FIN2')
+      expect(res2).toContain('_FIN2')
+      expect(res2).not.toContain('_FIN1')
+    })
+
+    it('Salida dentro del límite', async () => {
+      // WHEN un comando produce una salida menor o igual al límite
+      const limite = 100
+      const salidaCorta = 'salida corta sin recorte'
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: limite,
+        ejecutor: async () => ({
+          salida: salidaCorta,
+          codigoSalida: 0,
+        }),
+      })
+
+      const res = await toolShell!.ejecutar({ comando: 'test-corto' })
+
+      // THEN el modelo recibe la salida completa
+      expect(res).toBe(salidaCorta)
+      expect(res).not.toContain('omitidos')
+    })
+
+    it('El fallo conserva el final del error', async () => {
+      // WHEN un comando falla y su salida de error supera el límite
+      const limite = 100
+      const salidaErrorLarga = 'E'.repeat(200) + 'FINAL_DEL_ERROR'
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: limite,
+        ejecutor: async () => ({
+          salida: salidaErrorLarga,
+          codigoSalida: 1,
+        }),
+      })
+
+      const res = await toolShell!.ejecutar({ comando: 'test-error' })
+
+      // THEN la cola entregada al modelo conserva el final de la salida de error
+      expect(res).toContain('Comando terminó con código 1')
+      expect(res).toContain('FINAL_DEL_ERROR')
+      expect(res.endsWith('FINAL_DEL_ERROR')).toBe(true)
+    })
+
+    it('El marcador dice cuánto se omitió y cómo recuperar', async () => {
+      // WHEN el sistema entrega una cola al modelo
+      const limite = 100
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: limite,
+        ejecutor: async () => ({
+          salida: 'X'.repeat(300),
+          codigoSalida: 0,
+        }),
+      })
+
+      const res = await toolShell!.ejecutar({ comando: 'test-marca' })
+
+      // THEN la marca indica la cantidad omitida y que la salida completa está disponible en la interfaz
+      expect(res).toContain('200 caracteres omitidos')
+      expect(res).toContain('La salida completa está disponible en la interfaz')
+    })
+  })
 })

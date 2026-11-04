@@ -6,6 +6,7 @@ import {
   ENCABEZADO_RESUMEN,
   ErrorConfiguracionUmbrales,
   ErrorPresupuestoExcedido,
+  GestorRecordatorios,
   generarTextoResumen,
   MARCADOR_RECORTADO,
   medirContexto,
@@ -1038,6 +1039,111 @@ describe('context Specification Tests', () => {
       const res = aplicarPipelineContexto(mensajesConSalidaGrande, presupuesto)
       expect(res.etapaAplicada).toBe('enmascarar')
       expect(res.tokensRecuperados).toBeGreaterThan(500)
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: El sistema inyecta recordatorios de sistema en eventos del turno
+  // --------------------------------------------------------------------------
+  describe('Requirement: El sistema inyecta recordatorios de sistema en eventos del turno', () => {
+    it('Tras editar código', () => {
+      // WHEN una herramienta de edición termina correctamente
+      const gestor = new GestorRecordatorios()
+      const recordatorio = gestor.evaluarPaso(true)
+
+      // THEN el sistema inyecta un recordatorio de sistema que sugiere verificar el cambio
+      expect(recordatorio).toBeDefined()
+      expect(recordatorio?.rol).toBe('system')
+      expect(recordatorio?.contenido).toContain('verificar el cambio')
+    })
+
+    it('Tras varios pasos sin escribir', () => {
+      // WHEN el turno alcanza la cantidad configurable de pasos sin una escritura
+      const gestor = new GestorRecordatorios({
+        pasosSinEscrituraMax: 3,
+        objetivoOriginal: 'Refactorizar el módulo auth',
+      })
+      expect(gestor.evaluarPaso(false)).toBeUndefined()
+      expect(gestor.evaluarPaso(false)).toBeUndefined()
+      const recordatorio = gestor.evaluarPaso(false)
+
+      // THEN el sistema inyecta el objetivo original como recordatorio de sistema
+      expect(recordatorio).toBeDefined()
+      expect(recordatorio?.rol).toBe('system')
+      expect(recordatorio?.contenido).toContain('Refactorizar el módulo auth')
+    })
+
+    it('Tras compactar', () => {
+      // WHEN el historial fue compactado al final del turno anterior
+      const gestor = new GestorRecordatorios({
+        objetivoOriginal: 'Implementar feature X',
+      })
+      const recordatorio = gestor.crearRecordatorioPostCompactacion()
+
+      // THEN el sistema informa que el historial fue resumido y que el objetivo original sigue vigente
+      expect(recordatorio).toBeDefined()
+      expect(recordatorio?.rol).toBe('system')
+      expect(recordatorio?.contenido).toContain('resumido')
+      expect(recordatorio?.contenido).toContain('Implementar feature X')
+    })
+
+    it('El recordatorio no es un pedido del usuario', () => {
+      // WHEN el sistema agrega un recordatorio
+      const gestor = new GestorRecordatorios()
+      const recEdicion = gestor.evaluarPaso(true)
+
+      // THEN el mensaje se marca como de sistema y no como del usuario
+      expect(recEdicion?.rol).toBe('system')
+      expect(recEdicion?.rol).not.toBe('user')
+    })
+
+    it('El objetivo original sobrevive a la compactación', () => {
+      // WHEN la compactación reemplaza el turno donde se pidió la tarea
+      const gestor = new GestorRecordatorios({
+        objetivoOriginal: 'Objetivo de largo plazo',
+      })
+      const historial = [{ rol: 'system', contenido: 'resumen' }] as Mensaje[]
+      const rec = gestor.crearRecordatorioPostCompactacion()
+      if (rec) gestor.inyectarEnHistorial(historial, rec)
+
+      // THEN el sistema conserva el objetivo original y puede reinyectarlo
+      expect(gestor.obtenerObjetivoOriginal()).toBe('Objetivo de largo plazo')
+      expect(
+        historial.some((m) => m.contenido?.includes('Objetivo de largo plazo')),
+      ).toBe(true)
+    })
+
+    it('No se repite en pasos consecutivos', () => {
+      // WHEN el mismo recordatorio ya se inyectó en el paso anterior
+      const gestor = new GestorRecordatorios()
+      const primero = gestor.evaluarPaso(true)
+      const segundo = gestor.evaluarPaso(true)
+
+      // THEN el sistema no lo vuelve a inyectar en el paso siguiente
+      expect(primero).toBeDefined()
+      expect(segundo).toBeUndefined()
+    })
+
+    it('La atomicidad se conserva', () => {
+      // WHEN el sistema inyecta un recordatorio
+      const gestor = new GestorRecordatorios()
+      const historial: Mensaje[] = [
+        {
+          rol: 'assistant',
+          llamadasHerramientas: [
+            { id: 'call_1', nombre: 'read', argumentos: {} },
+          ],
+        },
+      ]
+      const recordatorio: Mensaje = {
+        rol: 'system',
+        contenido: 'recordatorio',
+      }
+      gestor.inyectarEnHistorial(historial, recordatorio)
+
+      // THEN lo hace sin separar una llamada de herramienta de su resultado
+      expect(historial[0]?.rol).toBe('system')
+      expect(historial[1]?.rol).toBe('assistant')
     })
   })
 })

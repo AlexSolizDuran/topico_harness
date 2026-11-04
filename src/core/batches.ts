@@ -305,6 +305,9 @@ async function* correrTandaConcurrente(
       nombre: item.llamada.nombre,
       resultado: res.resultado,
       esError: res.esError,
+      ...(res.salidaCompleta !== undefined
+        ? { salidaCompleta: res.salidaCompleta }
+        : {}),
     })
     pendientes--
     notificarLlegada?.()

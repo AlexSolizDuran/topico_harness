@@ -120,8 +120,10 @@ export interface PropsTarjetaHerramienta {
   nombre: string
   argumentos?: Record<string, unknown> | undefined
   resultado?: string | undefined
+  salidaCompleta?: string | undefined
   esError?: boolean | undefined
   truncado?: boolean | undefined
+  esCola?: boolean | undefined
   enCurso?: boolean | undefined
 }
 
@@ -129,11 +131,17 @@ export const TarjetaHerramienta: React.FC<PropsTarjetaHerramienta> = ({
   nombre,
   argumentos,
   resultado,
+  salidaCompleta,
   esError = false,
   truncado = false,
+  esCola = false,
   enCurso = false,
 }) => {
   const resumen = resumirArgumentos(argumentos)
+  const contenidoAMostrar = salidaCompleta ?? resultado
+  const tieneCola =
+    esCola || (salidaCompleta !== undefined && salidaCompleta !== resultado)
+
   return (
     <Box
       flexDirection="column"
@@ -149,16 +157,22 @@ export const TarjetaHerramienta: React.FC<PropsTarjetaHerramienta> = ({
         {resumen ? <Text color="gray"> {resumen}</Text> : null}
         {enCurso ? <Text color="yellow"> · en curso</Text> : null}
       </Box>
-      {resultado !== undefined ? (
+      {contenidoAMostrar !== undefined ? (
         <Box marginTop={1}>
           {esError ? (
-            <Text color="red">{resultado}</Text>
+            <Text color="red">{contenidoAMostrar}</Text>
           ) : (
-            <Text>{resultado}</Text>
+            <Text>{contenidoAMostrar}</Text>
           )}
         </Box>
       ) : null}
-      {truncado ? <Text color="yellow">resultado truncado</Text> : null}
+      {tieneCola ? (
+        <Text color="cyan">
+          [Cola entregada al modelo; la interfaz conserva la salida completa]
+        </Text>
+      ) : truncado ? (
+        <Text color="yellow">resultado truncado</Text>
+      ) : null}
     </Box>
   )
 }
@@ -229,8 +243,10 @@ export const TarjetaHerramientaEnCurso: React.FC<{
       nombre={herramienta.nombre}
       argumentos={herramienta.argumentos}
       resultado={herramienta.resultado}
+      salidaCompleta={herramienta.salidaCompleta}
       esError={herramienta.esError}
       truncado={herramienta.truncado}
+      esCola={herramienta.esCola}
       enCurso={enCurso}
     />
   )
@@ -265,8 +281,10 @@ export const ComponenteElemento: React.FC<{ elemento: ElementoVisual }> = ({
         nombre={elemento.nombre}
         argumentos={elemento.argumentos}
         resultado={elemento.resultado}
+        salidaCompleta={elemento.salidaCompleta}
         esError={elemento.esError}
         truncado={elemento.truncado}
+        esCola={elemento.esCola}
       />
     )
   }

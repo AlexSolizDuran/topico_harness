@@ -5,6 +5,7 @@ import type { EntradaHerramienta, RegistroHerramientas } from './registry.js'
 export interface ResultadoDespacho {
   resultado: string
   esError: boolean
+  salidaCompleta?: string | undefined
   rutasExploradas?: string[] | undefined
   avisosHooks?: string[] | undefined
 }
@@ -308,9 +309,14 @@ async function ejecutarHerramientaConHooks(
     salida = `${salida}\n${notas.map((n) => `[Nota de hook]: ${n}`).join('\n')}`
   }
 
+  const salidaCompleta = herramienta.obtenerSalidaCompleta
+    ? herramienta.obtenerSalidaCompleta(argumentos)
+    : undefined
+
   return {
     resultado: salida,
     esError,
+    ...(salidaCompleta !== undefined ? { salidaCompleta } : {}),
     ...(rutasExploradas ? { rutasExploradas } : {}),
     ...(avisosHooks.length > 0 ? { avisosHooks } : {}),
   }

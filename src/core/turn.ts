@@ -26,6 +26,11 @@ export interface PreparacionHistorial {
 
 export type PrepararHistorial = (mensajes: Mensaje[]) => PreparacionHistorial
 
+export interface EvaluadorRecordatorios {
+  evaluarPaso: (huboEscritura: boolean) => Mensaje | undefined
+  inyectarEnHistorial: (historial: Mensaje[], recordatorio: Mensaje) => void
+}
+
 export interface OpcionesTurno {
   proveedor: Proveedor
   registro: RegistroHerramientas
@@ -39,6 +44,7 @@ export interface OpcionesTurno {
   enTurnoHijo?: boolean | undefined
   alExplorarRutas?: AlExplorarRutas | undefined
   hooks?: EjecutorHooks | undefined
+  evaluadorRecordatorios?: EvaluadorRecordatorios | undefined
 }
 
 interface ResultadoPasoProveedor {
@@ -202,6 +208,20 @@ async function* ejecutarUnPaso(
       mensajes: historial,
       pasosEjecutados: paso,
       tokens: resProveedor.tokens,
+    }
+  }
+
+  if (opciones.evaluadorRecordatorios) {
+    const huboEscritura = resProveedor.llamadasHerramientas.some((l) =>
+      ['write', 'edit', 'apply_patch'].includes(l.nombre),
+    )
+    const recordatorio =
+      opciones.evaluadorRecordatorios.evaluarPaso(huboEscritura)
+    if (recordatorio) {
+      opciones.evaluadorRecordatorios.inyectarEnHistorial(
+        historial,
+        recordatorio,
+      )
     }
   }
 

@@ -19,6 +19,7 @@ import {
 } from '../context/metrics.js'
 import { aplicarPipelineContexto } from '../context/pipeline.js'
 import { podarPasosLectura } from '../context/pruning.js'
+import { GestorRecordatorios } from '../context/reminders.js'
 import {
   calcularTokensHistorial,
   estimarTokensTexto,
@@ -196,6 +197,7 @@ export class SesionInteractiva {
     | ((decision: DecisionAprobacion) => void)
     | undefined
   private cancelacionSolicitada = false
+  private gestorRecordatorios = new GestorRecordatorios()
 
   constructor(opciones: OpcionesSesion) {
     this.proveedor = opciones.proveedor
@@ -497,6 +499,10 @@ export class SesionInteractiva {
 
   obtenerEstado(): EstadoSesionVisual {
     return this.estado
+  }
+
+  obtenerGestorRecordatorios(): GestorRecordatorios {
+    return this.gestorRecordatorios
   }
 
   obtenerMetricasContexto(): MetricasContexto {
@@ -849,6 +855,21 @@ export class SesionInteractiva {
     this.actualizarMetricas(false)
     this.notificar()
 
+    if (!this.gestorRecordatorios.obtenerObjetivoOriginal()) {
+      this.gestorRecordatorios.establecerObjetivoOriginal(texto)
+    }
+
+    if (this.ultimaCompactacion) {
+      const recPost =
+        this.gestorRecordatorios.crearRecordatorioPostCompactacion()
+      if (recPost) {
+        this.gestorRecordatorios.inyectarEnHistorial(
+          this.mensajesHistorial,
+          recPost,
+        )
+      }
+    }
+
     const indiceInicial = this.mensajesHistorial.length
     this.mensajesHistorial.push({ rol: 'user', contenido: texto })
 
@@ -914,6 +935,7 @@ export class SesionInteractiva {
     const defAgente = this.obtenerDefinicionAgenteActivo()
     this.gestorPermisos.establecerReglasAgente(defAgente?.permisos ?? [])
     this.recalcularAnunciosSkills()
+    this.gestorRecordatorios.iniciarTurno()
 
     try {
       const generador = ejecutarTurno({
@@ -928,6 +950,7 @@ export class SesionInteractiva {
         alExplorarRutas: (rutas) =>
           this.manejarRutasExploradas(rutas, defAgente),
         hooks: this.gestorHooks,
+        evaluadorRecordatorios: this.gestorRecordatorios,
       })
 
       let iter = await generador.next()

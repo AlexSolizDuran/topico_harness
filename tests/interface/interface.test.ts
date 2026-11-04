@@ -1,9 +1,13 @@
+import { renderToString } from 'ink'
+import React from 'react'
 import { describe, expect, it } from 'vitest'
 import { ejecutarTurno, RegistroHerramientas } from '../../src/core/index.js'
+import { TarjetaHerramienta } from '../../src/interface/app.js'
 import {
   aplicarEventoTurno,
   crearEstadoInicial,
   detectarTerminalInteractiva,
+  type ElementoVisual,
   ErrorTurnoEnCurso,
   finalizarTurnoVisual,
   RenderizadorLineaALinea,
@@ -13,6 +17,7 @@ import {
   type PeticionProveedor,
   ProveedorSimulado,
 } from '../../src/provider/index.js'
+import { crearHerramientaShell } from '../../src/tools/shell.js'
 import type { EstadoTurno, EventoTurno } from '../../src/types.js'
 
 async function consumirTurnoCompleto(
@@ -433,6 +438,154 @@ describe('interface Specification Tests', () => {
 
       // THEN los turnos se comportan igual y el núcleo no cambia
       expect(estado.tipo).toBe('completado')
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: La interfaz conserva la salida completa de la herramienta de ejecución
+  // --------------------------------------------------------------------------
+  describe('Requirement: La interfaz conserva la salida completa de la herramienta de ejecución', () => {
+    it('Salida grande', async () => {
+      // WHEN el modelo recibe una cola de una salida larga
+      const salidaLarga = `${'A'.repeat(500)}ULTIMO_BLOQUE`
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: 100,
+        ejecutor: async () => ({ salida: salidaLarga, codigoSalida: 0 }),
+      })
+      const registro = new RegistroHerramientas()
+      registro.registrar(toolShell!)
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              {
+                id: 'call_1',
+                nombre: 'shell',
+                argumentos: { comando: 'echo grande' },
+              },
+            ],
+          },
+          { fragmentosTexto: ['Entendido.'] },
+        ],
+      })
+
+      const sesion = new SesionInteractiva({
+        proveedor,
+        registro,
+      })
+      await sesion.enviarMensaje('ejecuta shell')
+
+      const estado = sesion.obtenerEstado()
+      const item = estado.historial.find(
+        (h): h is Extract<ElementoVisual, { tipo: 'herramienta' }> =>
+          h.tipo === 'herramienta' && h.nombre === 'shell',
+      )
+
+      // THEN la interfaz conserva y muestra la salida completa
+      expect(item).toBeDefined()
+      expect(item?.salidaCompleta).toBe(salidaLarga)
+      expect(item?.resultado).toContain('caracteres omitidos')
+    })
+
+    it('Salida pequeña', async () => {
+      // WHEN la salida cabe en el límite
+      const salidaCorta = 'salida dentro del limite'
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: 100,
+        ejecutor: async () => ({ salida: salidaCorta, codigoSalida: 0 }),
+      })
+      const registro = new RegistroHerramientas()
+      registro.registrar(toolShell!)
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              {
+                id: 'call_1',
+                nombre: 'shell',
+                argumentos: { comando: 'echo corto' },
+              },
+            ],
+          },
+          { fragmentosTexto: ['Ok.'] },
+        ],
+      })
+
+      const sesion = new SesionInteractiva({ proveedor, registro })
+      await sesion.enviarMensaje('ejecuta shell corto')
+
+      const item = sesion
+        .obtenerEstado()
+        .historial.find(
+          (h): h is Extract<ElementoVisual, { tipo: 'herramienta' }> =>
+            h.tipo === 'herramienta' && h.nombre === 'shell',
+        )
+
+      // THEN la interfaz y el modelo reciben la misma salida completa
+      expect(item?.salidaCompleta).toBe(salidaCorta)
+      expect(item?.resultado).toBe(salidaCorta)
+    })
+
+    it('La salida completa sobrevive al turno', async () => {
+      // WHEN el turno termina o se cancela después de una salida larga
+      const salidaLarga = 'LINEAS_LARGAS_'.repeat(50)
+      const toolShell = crearHerramientaShell({
+        plataforma: 'linux',
+        maximoContenido: 50,
+        ejecutor: async () => ({ salida: salidaLarga, codigoSalida: 0 }),
+      })
+      const registro = new RegistroHerramientas()
+      registro.registrar(toolShell!)
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              {
+                id: 'call_1',
+                nombre: 'shell',
+                argumentos: { comando: 'echo largo' },
+              },
+            ],
+          },
+          { fragmentosTexto: ['Terminado'] },
+        ],
+      })
+      const sesion = new SesionInteractiva({ proveedor, registro })
+      await sesion.enviarMensaje('ejecuta')
+
+      // Turno ya terminado
+      expect(sesion.obtenerEstado().turnoEnCurso).toBe(false)
+      const item = sesion
+        .obtenerEstado()
+        .historial.find(
+          (h): h is Extract<ElementoVisual, { tipo: 'herramienta' }> =>
+            h.tipo === 'herramienta',
+        )
+
+      // THEN la persona puede seguir consultando la salida completa
+      expect(item?.salidaCompleta).toBe(salidaLarga)
+    })
+
+    it('La interfaz no confunde la cola con la salida completa', () => {
+      // WHEN la interfaz muestra el resultado de una ejecución larga
+      const texto = renderToString(
+        React.createElement(TarjetaHerramienta, {
+          nombre: 'shell',
+          resultado:
+            '[... 100 caracteres omitidos. La salida completa está disponible en la interfaz ...]\ncola',
+          salidaCompleta: 'salida completa que era muy larga',
+          esCola: true,
+        }),
+      )
+
+      // THEN indica que el modelo recibió solo una cola y no presenta esa cola como el total
+      expect(texto).toContain('salida completa')
+      expect(texto).toContain('Cola entregada al modelo')
     })
   })
 })

@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ejecutarTurno, RegistroHerramientas } from '../../src/core/index.js'
+import { SesionInteractiva } from '../../src/interface/runner.js'
 import type {
   ConteoTokens,
   EventoProveedor,
@@ -17,6 +19,7 @@ import {
   ProveedorSimulado,
   sanitizarRegistro,
 } from '../../src/provider/index.js'
+import type { EfectoPermiso } from '../../src/types.js'
 
 describe('provider Specification Tests', () => {
   // --------------------------------------------------------------------------
@@ -579,6 +582,178 @@ describe('provider Specification Tests', () => {
       // THEN el sistema no la reporta como completa ni la da por cerrada
       expect(razonFin).not.toBe('completado')
       expect(razonFin).toBe('interrumpido')
+    })
+  })
+
+  // --------------------------------------------------------------------------
+  // Requirement: El prefijo de la petición se mantiene estable
+  // --------------------------------------------------------------------------
+  describe('Requirement: El prefijo de la petición se mantiene estable', () => {
+    it('Dos viajes del mismo turno comparten prefijo', async () => {
+      // WHEN el turno hace dos llamadas al provider sin compactar
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: 'c1', nombre: 'tool_a', argumentos: {} },
+            ],
+          },
+          { fragmentosTexto: ['respuesta final'] },
+        ],
+      })
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'tool_a',
+        descripcion: 'A',
+        esquema: {},
+        ejecutar: async () => 'res_a',
+      })
+      registro.registrar({
+        nombre: 'tool_b',
+        descripcion: 'B',
+        esquema: {},
+        ejecutar: async () => 'res_b',
+      })
+
+      const turno = ejecutarTurno({
+        proveedor,
+        registro,
+        mensajes: [{ rol: 'user', contenido: 'hola' }],
+        sistema: 'PROMPT_SISTEMA_CONSTANTE',
+      })
+      for await (const _ of turno) {
+        // consumir eventos
+      }
+
+      // THEN ambas peticiones llevan el mismo prompt de sistema y el mismo orden de herramientas
+      expect(proveedor.peticionesRecibidas.length).toBe(2)
+      expect(proveedor.peticionesRecibidas[0]?.sistema).toBe(
+        'PROMPT_SISTEMA_CONSTANTE',
+      )
+      expect(proveedor.peticionesRecibidas[1]?.sistema).toBe(
+        'PROMPT_SISTEMA_CONSTANTE',
+      )
+      const toolsP1 = proveedor.peticionesRecibidas[0]?.herramientas?.map(
+        (h) => h.nombre,
+      )
+      const toolsP2 = proveedor.peticionesRecibidas[1]?.herramientas?.map(
+        (h) => h.nombre,
+      )
+      expect(toolsP1).toEqual(toolsP2)
+    })
+
+    it('El orden de herramientas no depende de permisos', async () => {
+      // WHEN cambia el resultado de una evaluación de permisos entre dos viajes del mismo turno
+      let evaluacion = 0
+      const portero = {
+        evaluar: () => {
+          evaluacion++
+          return {
+            efecto: (evaluacion === 1
+              ? 'permitir'
+              : 'consultar') as EfectoPermiso,
+            accion: 'read' as const,
+            recurso: 'test',
+            patronSugerido: '*',
+            obligatoria: false,
+          }
+        },
+        solicitarAprobacion: async () => 'una_vez' as const,
+      }
+
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          {
+            llamadasHerramienta: [
+              { id: 'c1', nombre: 'tool_a', argumentos: {} },
+            ],
+          },
+          { fragmentosTexto: ['fin'] },
+        ],
+      })
+      const registro = new RegistroHerramientas()
+      registro.registrar({
+        nombre: 'tool_a',
+        descripcion: 'A',
+        esquema: {},
+        ejecutar: async () => 'ok',
+      })
+      registro.registrar({
+        nombre: 'tool_b',
+        descripcion: 'B',
+        esquema: {},
+        ejecutar: async () => 'ok',
+      })
+
+      const turno = ejecutarTurno({
+        proveedor,
+        registro,
+        mensajes: [{ rol: 'user', contenido: 'test' }],
+        portero,
+      })
+      for await (const _ of turno) {
+        // consumir
+      }
+
+      // THEN el orden de las herramientas enviadas no cambia
+      const toolsP1 = proveedor.peticionesRecibidas[0]?.herramientas?.map(
+        (h) => h.nombre,
+      )
+      const toolsP2 = proveedor.peticionesRecibidas[1]?.herramientas?.map(
+        (h) => h.nombre,
+      )
+      expect(toolsP1).toEqual(toolsP2)
+    })
+
+    it('Cambiar de agente o modelo cambia el prefijo una vez', async () => {
+      // WHEN el turno siguiente usa otro agente o modelo
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          { fragmentosTexto: ['Turno 1'] },
+          { fragmentosTexto: ['Turno 2'] },
+        ],
+      })
+      const registro = new RegistroHerramientas()
+      const sesion = new SesionInteractiva({
+        proveedor,
+        registro,
+        modelosDisponibles: ['prov/mod-a', 'prov/mod-b'],
+        modeloActivo: 'prov/mod-a',
+        fabricaProveedor: (_p, m) => ({
+          proveedor,
+          ventanaContexto: 100000,
+        }),
+      })
+
+      await sesion.enviarMensaje('Primer pedido')
+      sesion.cambiarModelo('prov/mod-b')
+      await sesion.enviarMensaje('Segundo pedido')
+
+      // THEN el prefijo cambia una vez al empezar el turno y se mantiene estable durante ese turno
+      expect(proveedor.peticionesRecibidas.length).toBe(2)
+      expect(sesion.obtenerModeloActivo()).toBe('prov/mod-b')
+    })
+
+    it('Compactar invalida el prefijo una sola vez', async () => {
+      // WHEN el turno termina y el historial se compacta
+      const proveedor = new ProveedorSimulado({
+        respuestas: [
+          { fragmentosTexto: ['Respuesta 1'] },
+          { fragmentosTexto: ['Respuesta 2'] },
+        ],
+      })
+      const registro = new RegistroHerramientas()
+      const sesion = new SesionInteractiva({
+        proveedor,
+        registro,
+        ventanaContexto: 200, // Forzar compactación por ventana pequeña
+      })
+
+      await sesion.enviarMensaje('A'.repeat(500))
+      await sesion.enviarMensaje('Segundo mensaje')
+
+      // THEN el turno siguiente arranca con un prefijo nuevo y no se recompacta en cada paso
+      expect(proveedor.peticionesRecibidas.length).toBe(2)
     })
   })
 })

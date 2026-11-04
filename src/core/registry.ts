@@ -22,6 +22,9 @@ export interface EntradaHerramienta {
   rutasExploradas?:
     | ((argumentos: Record<string, unknown>) => string[] | undefined)
     | undefined
+  obtenerSalidaCompleta?:
+    | ((argumentos: Record<string, unknown>) => string | undefined)
+    | undefined
   ejecutar: (
     argumentos: Record<string, unknown>,
     senalCancelacion?: AbortSignal,

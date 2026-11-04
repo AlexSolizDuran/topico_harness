@@ -14,6 +14,8 @@ export const REGLAS_BASE: readonly ReglaPermiso[] = [
   { accion: 'read', recurso: '*.env.*', efecto: 'consultar' },
   { accion: 'read', recurso: '*.env.example', efecto: 'permitir' },
   { accion: 'hook', recurso: '*', efecto: 'consultar' },
+  { accion: 'mcp', recurso: '*', efecto: 'consultar' },
+  { accion: 'lsp', recurso: '*', efecto: 'permitir' },
 ]
 
 const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
@@ -49,6 +51,8 @@ const MAPA_ACCIONES: Record<string, AccionPermisoCanon | '*'> = {
   'directorio externo': 'external_directory',
   skill: 'skill',
   hook: 'hook',
+  mcp: 'mcp',
+  lsp: 'lsp',
   doom_loop: 'doom_loop',
   detectar_repeticion: 'doom_loop',
   'detectar repetición': 'doom_loop',

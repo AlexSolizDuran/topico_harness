@@ -2,7 +2,7 @@ import { exec, spawn } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import type { EntradaHerramienta } from '../core/registry.js'
 import { evaluarRiesgoRuta, resolverRuta } from './path.js'
-import { truncarContenido } from './truncate.js'
+import { formatearColaSalida, truncarContenido } from './truncate.js'
 
 export const COMANDOS_BLOQUEADOS_UNIX = new Set([
   'rm',
@@ -616,6 +616,8 @@ export function crearHerramientaShell(
     ? COMANDOS_BLOQUEADOS_WINDOWS
     : COMANDOS_BLOQUEADOS_UNIX
 
+  const salidasCompletas = new Map<string, string>()
+
   return {
     nombre: 'shell',
     descripcion: esWindows
@@ -663,6 +665,8 @@ export function crearHerramientaShell(
         cwd,
       ),
     admiteParalelo: false,
+    obtenerSalidaCompleta: (args) =>
+      salidasCompletas.get(String(args.comando ?? '').trim()),
     ejecutar: async (args) => {
       const comando = String(args.comando ?? '').trim()
       if (!comando) return 'ERROR: el comando está vacío.'
@@ -677,13 +681,24 @@ export function crearHerramientaShell(
           : await ejecutarEnUnix(comando, destino.ruta)
 
       if (resultado.codigoSalida !== 0) {
-        return `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${resultado.salida}`
+        const completa = `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${resultado.salida}`
+        salidasCompletas.set(comando, completa)
+        const formateo = formatearColaSalida(
+          resultado.salida,
+          opciones.maximoContenido,
+        )
+        if (!formateo.truncada) {
+          return completa
+        }
+        return `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${formateo.cola}`
       }
 
       const salida = opciones.ejecutor
         ? resultado.salida
         : resultado.salida.trim()
-      return truncarContenido(salida, opciones.maximoContenido)
+      salidasCompletas.set(comando, salida)
+      const formateo = formatearColaSalida(salida, opciones.maximoContenido)
+      return formateo.cola
     },
   }
 }

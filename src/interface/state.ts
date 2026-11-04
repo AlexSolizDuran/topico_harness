@@ -17,8 +17,10 @@ export interface HerramientaEnCurso {
   iniciadaEn: number
   completada?: boolean | undefined
   resultado?: string | undefined
+  salidaCompleta?: string | undefined
   esError?: boolean | undefined
   truncado?: boolean | undefined
+  esCola?: boolean | undefined
 }
 
 export type ElementoVisual =
@@ -30,8 +32,10 @@ export type ElementoVisual =
       nombre: string
       argumentos?: Record<string, unknown> | undefined
       resultado: string
+      salidaCompleta?: string | undefined
       esError: boolean
       truncado: boolean
+      esCola?: boolean | undefined
     }
   | {
       id: string
@@ -195,8 +199,10 @@ export function convertirMensajesAHistorial(
 
 function convertirTarjetaAHistorial(item: HerramientaEnCurso): ElementoVisual {
   const resultado = item.resultado ?? ''
+  const salidaCompleta = item.salidaCompleta ?? resultado
   const esError = Boolean(item.esError)
   const truncado = Boolean(item.truncado)
+  const esCola = Boolean(item.esCola)
 
   if (item.nombre === 'task') {
     const subagente = String(item.argumentos.agent ?? 'subagente')
@@ -218,8 +224,10 @@ function convertirTarjetaAHistorial(item: HerramientaEnCurso): ElementoVisual {
     nombre: item.nombre,
     argumentos: item.argumentos,
     resultado,
+    salidaCompleta,
     esError,
     truncado,
+    esCola,
   }
 }
 
@@ -255,7 +263,11 @@ function manejarFinHerramienta(
   nuevo: EstadoSesionVisual,
   evento: Extract<EventoTurno, { tipo: 'herramienta_fin' }>,
 ): EstadoSesionVisual {
-  const esTruncado = evento.resultado.includes('[Contenido truncado')
+  const esTruncado =
+    evento.resultado.includes('[Contenido truncado') ||
+    evento.resultado.includes('caracteres omitidos')
+  const esCola = evento.resultado.includes('caracteres omitidos')
+  const salidaCompleta = evento.salidaCompleta ?? evento.resultado
   const indice = nuevo.herramientasEnCurso.findIndex((h) => h.id === evento.id)
 
   if (indice === -1) {
@@ -269,8 +281,10 @@ function manejarFinHerramienta(
       iniciadaEn: Date.now(),
       completada: true,
       resultado: evento.resultado,
+      salidaCompleta,
       esError: evento.esError,
       truncado: esTruncado,
+      esCola,
     }
     nuevo.historial.push(convertirTarjetaAHistorial(temporal))
     nuevo.herramientaEnCurso = undefined
@@ -283,8 +297,10 @@ function manejarFinHerramienta(
       ...actual,
       completada: true,
       resultado: evento.resultado,
+      salidaCompleta,
       esError: evento.esError,
       truncado: esTruncado,
+      esCola,
     }
   }
 

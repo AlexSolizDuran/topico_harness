@@ -18,6 +18,8 @@ export type AccionPermisoCanon =
   | 'skill'
   | 'hook'
   | 'doom_loop'
+  | 'mcp'
+  | 'lsp'
 
 export type AccionPermiso =
   | AccionPermisoCanon
@@ -184,6 +186,7 @@ export type EventoTurno =
       nombre: string
       resultado: string
       esError: boolean
+      salidaCompleta?: string | undefined
     }
   | {
       tipo: 'espera_aprobacion'
