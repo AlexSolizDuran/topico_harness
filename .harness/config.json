@@ -1,6 +1,6 @@
 {
-  "proveedorPorDefecto": "openrouter",
-  "modeloPorDefecto": "openai/gpt-4o",
+  "proveedorPorDefecto": "groq",
+  "modeloPorDefecto": "openai/gpt-oss-120b",
   "sesiones": {
     "guardar": true,
     "maximo": 50
@@ -23,37 +23,50 @@
       },
       "modelos": [
         {
-          "id": "openai/gpt-4o",
+          "id": "openrouter/free",
           "soportaHerramientas": true,
-          "ventanaContexto": 128000,
-          "maxTokensSalida": 1024
+          "ventanaContexto": 200000,
+          "maxTokensSalida": 4096
         },
         {
-          "id": "deepseek/deepseek-chat",
+          "id": "cohere/north-mini-code:free",
           "soportaHerramientas": true,
-          "ventanaContexto": 64000,
-          "maxTokensSalida": 1024
+          "ventanaContexto": 256000,
+          "maxTokensSalida": 4096
         },
         {
-          "id": "openai/gpt-oss-120b:free",
+          "id": "google/gemma-4-26b-a4b-it:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 262144,
+          "maxTokensSalida": 4096
+        },
+        {
+          "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 1000000,
+          "maxTokensSalida": 4096
+        },
+        {
+          "id": "nvidia/nemotron-3.5-super-vl:free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 1000000,
+          "maxTokensSalida": 4096
+        }
+      ]
+    },
+    "groq": {
+      "tipo": "openai-compatible",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "variableApiKey": "GROQ_API_KEY",
+      "modelos": [
+        {
+          "id": "openai/gpt-oss-120b",
           "soportaHerramientas": true,
           "ventanaContexto": 131072,
           "maxTokensSalida": 4096
         },
         {
-          "id": "qwen/qwen3-coder:free",
-          "soportaHerramientas": true,
-          "ventanaContexto": 131072,
-          "maxTokensSalida": 4096
-        },
-        {
-          "id": "google/gemma-4-31b-it:free",
-          "soportaHerramientas": true,
-          "ventanaContexto": 131072,
-          "maxTokensSalida": 4096
-        },
-        {
-          "id": "z-ai/glm-4.5-air:free",
+          "id": "openai/gpt-oss-20b",
           "soportaHerramientas": true,
           "ventanaContexto": 131072,
           "maxTokensSalida": 4096
@@ -74,4 +87,3 @@
     }
   }
 }
-
