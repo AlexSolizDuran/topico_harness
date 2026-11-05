@@ -41,4 +41,3 @@ export interface ArgumentosHerramientaLsp {
   caracter?: number | undefined
   simbolo?: string | undefined
 }
-

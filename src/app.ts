@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { isAbsolute, resolve } from 'node:path'
 import { cargarAgentes } from './agents/cargar.js'
 import {
   type DefinicionAgente,
@@ -8,7 +11,7 @@ import {
   resolverYValidarUmbrales,
 } from './context/budget.js'
 import { estimarTokensTexto } from './context/tokens.js'
-import type { RegistroHerramientas } from './core/registry.js'
+import { RegistroHerramientas } from './core/registry.js'
 import {
   type ConfiguracionHooks,
   type EjecutorComandoHook,
@@ -19,6 +22,18 @@ import { GestorInstrucciones } from './instructions/cargar-instrucciones.js'
 import { type FabricaProveedor, SesionInteractiva } from './interface/runner.js'
 import type { EstadoSesionVisual } from './interface/state.js'
 import {
+  crearHerramientaLsp,
+  decorarHerramientasConDiagnosticos,
+  GestorLsp,
+} from './lsp/index.js'
+import { crearEntradaHerramientaMcp, GestorMcp } from './mcp/index.js'
+import {
+  AlmacenMemoria,
+  extraerHechosDeSesion,
+  formatearBloqueMemoria,
+  resolverContradicciones,
+} from './memory/index.js'
+import {
   GestorPermisos,
   type ManejadorAprobacionCliente,
 } from './permissions/portero.js'
@@ -27,8 +42,10 @@ import {
   cargarConfig,
   listarModelos,
 } from './provider/config.js'
+import { sanitizarTexto } from './provider/credentials.js'
 import { resolverProveedor } from './provider/factory.js'
 import type { Proveedor } from './provider/types.js'
+import { EjecutorSandbox } from './sandbox/index.js'
 import {
   AlmacenSesiones,
   ErrorSesion,
@@ -115,32 +132,101 @@ export function construirHarness(
   })
 
   let sesionRef: SesionInteractiva | undefined
+  let config = opciones.config
+  if (!config && !opciones.proveedor) {
+    config = cargarConfig({ directorioProyecto })
+  }
+
+  let credencialesSanitizar = opciones.credencialesSanitizar ?? []
+
+  const ejecutorSandbox = new EjecutorSandbox()
+  const ejecutorShell = async (comando: string, cwd: string) => {
+    const esWindows = process.platform === 'win32'
+    const resultado = await ejecutorSandbox.ejecutarComando({
+      directorioProyecto: cwd,
+      comando: esWindows ? 'powershell.exe' : 'sh',
+      args: esWindows
+        ? ['-NoProfile', '-NonInteractive', '-Command', comando]
+        : ['-c', comando],
+      config: config?.sandbox,
+    })
+    return {
+      salida: `${resultado.stdout}${resultado.stderr}`,
+      codigoSalida: resultado.codigoSalida,
+      aislamiento: resultado.aislamiento,
+    }
+  }
+
+  const gestorLsp = new GestorLsp({
+    servidores: (config?.lsp ?? []).map((servidor) => ({
+      ...servidor,
+      raiz: isAbsolute(servidor.raiz)
+        ? servidor.raiz
+        : resolve(directorioProyecto, servidor.raiz),
+    })),
+  })
+
+  const gestorMcp = new GestorMcp({
+    servidores: config?.mcp,
+    sanitizarCredenciales: (texto) =>
+      sanitizarTexto(texto, credencialesSanitizar),
+  })
+
+  const almacenMemoria = new AlmacenMemoria(directorioProyecto)
+  const almacenMemoriaUsuario = config?.memoria?.usuario
+    ? new AlmacenMemoria(directorioProyecto, {
+        directorioBase:
+          config.memoria.rutaUsuario ??
+          resolve(homedir(), '.harness', 'memory'),
+      })
+    : undefined
+  const bloqueMemoria = formatearBloqueMemoria({
+    memoriaProyecto: almacenMemoria.cargarIndice(),
+    memoriaUsuario: almacenMemoriaUsuario?.cargarIndice(),
+  })
+
   const registro =
     opciones.registro ??
     crearCatalogoPorDefecto({
       directorioProyecto,
       skills,
       alCargarSkill: (id) => sesionRef?.marcarSkillCargada(id),
+      ejecutorShell,
+      alAvisoAislamiento: (aislamiento) => {
+        sesionRef?.agregarAvisoVisible(
+          `Ejecución sin aislamiento: ${aislamiento.motivoDegradacion ?? 'sin mecanismo disponible'}`,
+        )
+      },
     })
+
+  if (!opciones.registro) {
+    registrarHerramientaConValidacion(
+      registro,
+      crearHerramientaLsp({
+        gestorLsp,
+        reglasGlobales: opciones.reglasPermiso,
+        directorioProyecto,
+      }),
+    )
+    decorarHerramientasConDiagnosticos(registro, gestorLsp, directorioProyecto)
+  }
 
   let proveedor = opciones.proveedor
   let ventanaContexto = opciones.ventanaContexto ?? 128000
-  let credencialesSanitizar = opciones.credencialesSanitizar ?? []
   let modelosDisponibles = opciones.modelosDisponibles ?? []
   let modeloActivo = opciones.modeloActivo ?? ''
   let fabricaProveedor = opciones.fabricaProveedor
-  let config = opciones.config
 
   if (!proveedor) {
-    config = config ?? cargarConfig({ directorioProyecto })
-    const resuelto = resolverProveedor({ config })
+    const configResuelta = config ?? cargarConfig({ directorioProyecto })
+    config = configResuelta
+    const resuelto = resolverProveedor({ config: configResuelta })
     proveedor = resuelto.proveedor
     ventanaContexto = resuelto.ventanaContexto
     credencialesSanitizar = resuelto.credencialesSanitizar
-    modelosDisponibles = listarModelos(config)
+    modelosDisponibles = listarModelos(configResuelta)
     modeloActivo = `${resuelto.proveedorId}/${resuelto.modelo.id}`
 
-    const configResuelta = config
     fabricaProveedor = (proveedorId, modeloId) => {
       const nuevo = resolverProveedor({
         config: configResuelta,
@@ -223,6 +309,7 @@ export function construirHarness(
   const opcionesValidacion = {
     herramientasDisponibles: registro.listarNombres(),
     ...(modelosDisponibles.length > 0 ? { modelosDisponibles } : {}),
+    servidoresMcp: (config?.mcp ?? []).map((s) => s.id),
   }
 
   let agentePorDefecto = 'build'
@@ -371,6 +458,52 @@ export function construirHarness(
           ),
         }
       : {}),
+    ...(bloqueMemoria
+      ? {
+          memoriaInyectada: bloqueMemoria,
+          tokensSistemaMemoria: estimarTokensTexto(bloqueMemoria),
+        }
+      : {}),
+    obtenerRegistroExtra: async (agente, portero) => {
+      const declarados = agente.mcp ?? []
+      if (declarados.length === 0) return undefined
+
+      const configurados = new Set((config?.mcp ?? []).map((s) => s.id))
+      const servidores = declarados.filter((id) => configurados.has(id))
+      for (const id of servidores) {
+        try {
+          await gestorMcp.conectarServidor(id)
+        } catch (error) {
+          const mensaje = error instanceof Error ? error.message : String(error)
+          sesionRef?.agregarAvisoVisible(
+            `No se pudo conectar al servidor MCP '${id}': ${mensaje}`,
+          )
+        }
+      }
+
+      const visibles = gestorMcp.obtenerHerramientasVisibles(servidores).filter(
+        (herramienta) =>
+          portero.evaluar(
+            {
+              nombre: herramienta.nombreCompleto,
+              accionPermiso: 'mcp',
+              obtenerRecurso: () =>
+                `${herramienta.servidor}/${herramienta.nombre}`,
+            },
+            {},
+          ).efecto !== 'denegar',
+      )
+      if (visibles.length === 0) return undefined
+
+      const extra = new RegistroHerramientas()
+      for (const herramienta of visibles) {
+        registrarHerramientaConValidacion(
+          extra,
+          crearEntradaHerramientaMcp(gestorMcp, herramienta),
+        )
+      }
+      return extra
+    },
     skills: skills.map((s) => ({
       id: s.id,
       nombre: s.nombre,
@@ -394,12 +527,73 @@ export function construirHarness(
     sesion.cambiarAgente(opciones.agenteActivo)
   }
 
+  /**
+   * Extrae hechos aprendidos al cerrar y los guarda junto al índice existente.
+   * Cualquier fallo se informa como aviso: nunca impide cerrar la sesión.
+   */
+  const extraerMemoriaAlCerrar = async (): Promise<void> => {
+    const historial = sesion.obtenerHistorial()
+    if (historial.length === 0) return
+
+    const usaMemoria =
+      config?.memoria !== undefined ||
+      existsSync(almacenMemoria.obtenerDirectorio())
+    if (!usaMemoria) return
+
+    let proveedorMemoria = proveedor
+    if (config?.memoria?.modelo && fabricaProveedor) {
+      const barra = config.memoria.modelo.indexOf('/')
+      const proveedorId =
+        barra > 0 ? config.memoria.modelo.slice(0, barra) : proveedor.nombre
+      const modeloId =
+        barra > 0
+          ? config.memoria.modelo.slice(barra + 1)
+          : config.memoria.modelo
+      try {
+        proveedorMemoria = fabricaProveedor(proveedorId, modeloId).proveedor
+      } catch {
+        // Si el modelo declarado no resuelve, se usa el activo.
+      }
+    }
+
+    const resultado = await extraerHechosDeSesion(historial, {
+      proveedor: proveedorMemoria,
+      origen: 'sesion',
+    })
+    if (resultado.error) {
+      sesion.agregarAvisoVisible(
+        `No se pudo extraer la memoria de la sesión: ${resultado.error}`,
+      )
+      return
+    }
+    if (resultado.entradas.length === 0) return
+
+    const combinadas = resolverContradicciones([
+      ...almacenMemoria.cargarIndice(),
+      ...resultado.entradas,
+    ])
+    try {
+      almacenMemoria.guardarEntradas(combinadas)
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : String(error)
+      sesion.agregarAvisoVisible(
+        `No se pudo guardar la memoria de la sesión: ${mensaje}`,
+      )
+    }
+  }
+
   return {
     sesion,
     registro,
     proveedor,
     agentes: agentesLista,
     config,
-    cerrar: () => sesion.cerrarSesion(),
+    cerrar: async () => {
+      await sesion.cerrarSesion()
+      await extraerMemoriaAlCerrar()
+      gestorLsp.cerrar()
+      gestorMcp.cerrar()
+      ejecutorSandbox.cerrar()
+    },
   }
 }

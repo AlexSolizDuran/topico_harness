@@ -29,17 +29,15 @@ export class GestorMcp {
     if (!s.comando?.trim()) {
       throw new Error(`Servidor MCP '${s.id}' no declara comando de arranque`)
     }
-    // Comprobar si hay secretos literales (como claves tipo sk-...)
-    if (s.env) {
-      for (const [clave, valor] of Object.entries(s.env)) {
-        if (
-          /^(sk-|api_key|secret|ghp_|bearer)/i.test(valor) ||
-          (clave.toLowerCase().includes('key') && valor.length > 20)
-        ) {
-          throw new Error(
-            `Configuración de servidor MCP '${s.id}' contiene secreto literal en variable '${clave}'`,
-          )
-        }
+    // Las variables de entorno se declaran por nombre; nunca como valor literal.
+    for (const nombre of s.env ?? []) {
+      if (
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(nombre) ||
+        /^(sk-|ghp_|github_pat_|xox[baprs]-|bearer\s)/i.test(nombre)
+      ) {
+        throw new Error(
+          `Configuración de servidor MCP '${s.id}' contiene secreto literal en variable '${nombre}'`,
+        )
       }
     }
   }

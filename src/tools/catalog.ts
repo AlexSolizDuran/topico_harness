@@ -8,6 +8,7 @@ import { crearHerramientaGlob } from './glob.js'
 import { crearHerramientaGrep } from './grep.js'
 import { crearHerramientaParche } from './patch.js'
 import { crearHerramientaLectura } from './read.js'
+import type { AislamientoShell, OpcionesShell } from './shell.js'
 import { crearHerramientaShell } from './shell.js'
 import { crearHerramientaSkill } from './skill.js'
 import { crearHerramientaEscritura } from './write.js'
@@ -60,6 +61,8 @@ export interface OpcionesCatalogo {
   maximoContenido?: number | undefined
   skills?: SkillDescubierta[] | undefined
   alCargarSkill?: ((id: string) => void) | undefined
+  ejecutorShell?: OpcionesShell['ejecutor'] | undefined
+  alAvisoAislamiento?: ((aislamiento: AislamientoShell) => void) | undefined
 }
 
 /**
@@ -91,6 +94,8 @@ export function crearCatalogoPorDefecto(
     plataforma: opciones.plataforma,
     directorioProyecto: dir,
     maximoContenido: opciones.maximoContenido,
+    ejecutor: opciones.ejecutorShell,
+    alAvisoAislamiento: opciones.alAvisoAislamiento,
   })
 
   if (toolShell) {

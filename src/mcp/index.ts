@@ -1,4 +1,6 @@
 export * from './cliente.js'
+export * from './esquema.js'
 export * from './gestor.js'
+export * from './herramienta.js'
 export * from './permisos.js'
 export * from './types.js'

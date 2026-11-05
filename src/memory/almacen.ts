@@ -1,20 +1,27 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { type EntradaMemoria, ErrorTopeMemoria } from './types.js'
 
 export const TOPE_ARCHIVO_MEMORIA_DEFECTO = 32 * 1024 // 32 KiB
 export const TOPE_TOTAL_MEMORIA_DEFECTO = 64 * 1024 // 64 KiB
 
 export class AlmacenMemoria {
+  private directorioProyecto: string
   private directorioBase: string
   private topeArchivo: number
   private topeTotal: number
 
   constructor(
     directorioProyecto: string,
-    opciones: { topeArchivoBytes?: number; topeTotalBytes?: number } = {},
+    opciones: {
+      topeArchivoBytes?: number
+      topeTotalBytes?: number
+      directorioBase?: string
+    } = {},
   ) {
-    this.directorioBase = join(directorioProyecto, '.harness', 'memory')
+    this.directorioProyecto = directorioProyecto
+    this.directorioBase =
+      opciones.directorioBase ?? join(directorioProyecto, '.harness', 'memory')
     this.topeArchivo = opciones.topeArchivoBytes ?? TOPE_ARCHIVO_MEMORIA_DEFECTO
     this.topeTotal = opciones.topeTotalBytes ?? TOPE_TOTAL_MEMORIA_DEFECTO
   }
@@ -35,10 +42,22 @@ export class AlmacenMemoria {
 
     try {
       const contenido = readFileSync(rutaIndice, 'utf-8')
-      return this.parsearIndiceMarkdown(contenido)
+      return this.parsearIndiceMarkdown(contenido).map((entrada) => ({
+        ...entrada,
+        rutaDetalle: this.rutaDetalleDe(entrada.id),
+      }))
     } catch {
       return []
     }
+  }
+
+  private rutaDetalleDe(id: string): string {
+    const absoluta = join(this.directorioBase, `${id}.md`)
+    const relativa = relative(this.directorioProyecto, absoluta).replace(
+      /\\/g,
+      '/',
+    )
+    return relativa.startsWith('..') ? absoluta : relativa
   }
 
   /**

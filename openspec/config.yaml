@@ -21,8 +21,8 @@ context: |
     8  Instrucciones del proyecto (AGENTS.md raiz + anidados), skills bajo demanda
        y memoria persistente entre sesiones.
     Ademas: agentes primarios, tandas paralelas, persistencia de sesiones y ramas.
-    Implementado: 12 capacidades. Especificado: 16. Pendiente de implementacion:
-    sandbox, LSP, MCP y memoria persistente entre sesiones.
+    Implementado: las 16 capacidades, incluidas sandbox, LSP, MCP y memoria
+    persistente entre sesiones.
     La escalera completa esta documentada en `alcance/`, que es referencia de
     razonamiento y no contrato. El contrato vive en `openspec/specs/`.
 
@@ -91,7 +91,7 @@ context: |
 
   FLUJO DE ESTE REPO
     `openspec/specs/` es el contrato acordado: 16 capacidades, 170 requisitos y
-    606 escenarios. Los 39 changes de `openspec/changes/archive/` ya están archivados.
+    606 escenarios. Los 44 changes de `openspec/changes/archive/` ya están archivados.
     Los changes de spec agregan o modifican requisitos y no llevan `skip_specs`.
     Los de implementacion y documentacion si lo llevan. Los changes IMPLEMENTAN
     contra esos requisitos, no los vuelven a derivar. Al proponer un change,
@@ -102,11 +102,11 @@ context: |
     16 capacidades, 170 requisitos, 606 escenarios. Todo validado contra el schema
     `spec-driven`.
     core (12) · provider (9) · tools (23) · context (15) · interface (25) · sesiones (11) · agents (6) · subagents (15) · permissions (9) · instructions (8) · skills (6) · hooks (6) · memory (7) · sandbox (6) · lsp (6) · mcp (6)
-    IMPLEMENTADO: 12 de las 16 capacidades. `src/` y `tests/` existen, `npm run
-    check` pasa con 475 tests y `npm run build` genera `dist/main.js`. La prueba de
-    punta a punta contra OpenRouter paso en modo plano, con lectura real de
-    archivos y cambio de modelo por `--modelo`. Pendientes de implementacion:
-    memory, sandbox, lsp y mcp.
+    IMPLEMENTADO: las 16 capacidades. `src/` y `tests/` existen, `npm run check`
+    pasa con 628 tests y `npm run build` genera `dist/main.js`. La prueba de punta
+    a punta contra OpenRouter paso en modo plano, con lectura real de archivos y
+    cambio de modelo por `--modelo`. Sandbox, LSP, MCP y memoria estan cableados
+    desde `app.ts` y se cierran con la sesion.
 
     El provider concreto es OpenRouter por su API compatible con OpenAI; Ollama
     queda como alternativa local. La credencial se lee desde `.env` mediante

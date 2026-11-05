@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import readline from 'node:readline'
-import { z } from 'zod'
+import { jsonSchemaAZod } from './esquema.js'
 import type { ConfiguracionServidorMcp, HerramientaMcp } from './types.js'
 
 export interface OpcionesClienteMcp {
@@ -56,8 +56,14 @@ export class ClienteMcp {
       }, this.opciones.timeoutMs ?? 30000)
 
       try {
+        const entornoResuelto: Record<string, string> = {}
+        for (const nombre of this.config.env ?? []) {
+          const valor = process.env[nombre]
+          if (valor !== undefined) entornoResuelto[nombre] = valor
+        }
+
         const proc = spawn(this.config.comando, this.config.args ?? [], {
-          env: { ...process.env, ...this.config.env },
+          env: { ...process.env, ...entornoResuelto },
           stdio: ['pipe', 'pipe', 'pipe'],
           shell: process.platform === 'win32',
         })
@@ -284,10 +290,4 @@ export class ClienteMcp {
       // Ignorar líneas no JSON (e.g. logs en stdout)
     }
   }
-}
-
-function jsonSchemaAZod(schema?: Record<string, unknown>): z.ZodTypeAny {
-  if (!schema) return z.record(z.string(), z.unknown())
-  // Esquema genérico permisivo o basado en tipo
-  return z.object({}).passthrough()
 }

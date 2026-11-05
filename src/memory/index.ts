@@ -3,4 +3,3 @@ export * from './curacion.js'
 export * from './extractor.js'
 export * from './inyector.js'
 export * from './types.js'
-

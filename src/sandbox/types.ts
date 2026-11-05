@@ -25,4 +25,3 @@ export interface ResultadoEjecucionAislada {
   stderr: string
   aislamiento: InformacionAislamiento
 }
-

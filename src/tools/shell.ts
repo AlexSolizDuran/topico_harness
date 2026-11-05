@@ -87,16 +87,26 @@ export const CATALOGO_COMANDOS_WINDOWS = new Set([
 
 export const COMANDOS_BLOQUEADOS_WINDOWS = new Set<string>()
 
+export interface AislamientoShell {
+  aislado: boolean
+  mecanismo?: string | undefined
+  motivoDegradacion?: string | undefined
+}
+
+export interface ResultadoEjecutorShell {
+  salida: string
+  codigoSalida: number
+  aislamiento?: AislamientoShell | undefined
+}
+
 export interface OpcionesShell {
   plataforma?: NodeJS.Platform | undefined
   directorioProyecto?: string | undefined
   maximoContenido?: number | undefined
   ejecutor?:
-    | ((
-        comando: string,
-        cwd: string,
-      ) => Promise<{ salida: string; codigoSalida: number }>)
+    | ((comando: string, cwd: string) => Promise<ResultadoEjecutorShell>)
     | undefined
+  alAvisoAislamiento?: ((aislamiento: AislamientoShell) => void) | undefined
 }
 
 export interface Redireccion {
@@ -617,6 +627,7 @@ export function crearHerramientaShell(
     : COMANDOS_BLOQUEADOS_UNIX
 
   const salidasCompletas = new Map<string, string>()
+  let avisoAislamientoEmitido = false
 
   return {
     nombre: 'shell',
@@ -674,14 +685,18 @@ export function crearHerramientaShell(
       const destino = resolverDirectorio(args.directorio, cwd)
       if (!destino.ok) return destino.error
 
-      const resultado = opciones.ejecutor
+      const resultado: ResultadoEjecutorShell = opciones.ejecutor
         ? await opciones.ejecutor(comando, destino.ruta)
         : esWindows
           ? await ejecutarPowershell(comando, destino.ruta)
           : await ejecutarEnUnix(comando, destino.ruta)
 
+      const lineaAislamiento = formatearYAnunciarAislamiento(
+        resultado.aislamiento,
+      )
+
       if (resultado.codigoSalida !== 0) {
-        const completa = `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${resultado.salida}`
+        const completa = `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${resultado.salida}${lineaAislamiento}`
         salidasCompletas.set(comando, completa)
         const formateo = formatearColaSalida(
           resultado.salida,
@@ -690,15 +705,30 @@ export function crearHerramientaShell(
         if (!formateo.truncada) {
           return completa
         }
-        return `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${formateo.cola}`
+        return `Comando terminó con código ${resultado.codigoSalida}.\nSalida:\n${formateo.cola}${lineaAislamiento}`
       }
 
-      const salida = opciones.ejecutor
+      const salidaBase = opciones.ejecutor
         ? resultado.salida
         : resultado.salida.trim()
+      const salida = `${salidaBase}${lineaAislamiento}`
       salidasCompletas.set(comando, salida)
       const formateo = formatearColaSalida(salida, opciones.maximoContenido)
       return formateo.cola
     },
+  }
+
+  function formatearYAnunciarAislamiento(
+    aislamiento: AislamientoShell | undefined,
+  ): string {
+    if (!aislamiento) return ''
+    if (!aislamiento.aislado && !avisoAislamientoEmitido) {
+      avisoAislamientoEmitido = true
+      opciones.alAvisoAislamiento?.(aislamiento)
+    }
+    if (aislamiento.aislado) {
+      return `\nAislamiento: activo${aislamiento.mecanismo ? ` (${aislamiento.mecanismo})` : ''}`
+    }
+    return `\nAislamiento: no disponible${aislamiento.motivoDegradacion ? ` — ${aislamiento.motivoDegradacion}` : ''}`
   }
 }

@@ -4,8 +4,8 @@ Un coding agent de terminal: el modelo es el motor, el harness es el chasis. Lee
 archivos, ejecuta herramientas, administra el contexto y se puede cancelar a
 mitad de tarea.
 
-La implementación corresponde a los 25 changes archivados en
-`openspec/changes/archive/`. El contrato de comportamiento vive en
+La implementación cubre las 16 capacidades y corresponde a los 44 changes
+archivados en `openspec/changes/archive/`. El contrato de comportamiento vive en
 `openspec/specs/` y las decisiones de trabajo en `AGENTS.md`.
 
 ## Requisitos
@@ -58,6 +58,19 @@ Completá la credencial de una de estas dos formas:
 Cada modelo puede declarar `maxTokensSalida`. En OpenRouter conviene fijarlo
 (por ejemplo, `1024`) para que la petición no reserve el máximo del modelo y sea
 rechazada por crédito.
+
+`config.json` también admite las claves de las capacidades integradas:
+
+- `sandbox`: aislamiento del sistema operativo para `shell` (`habilitado`,
+  `mecanismoForzado`). Si el mecanismo no existe, la ejecución degrada y `shell`
+  lo informa; nunca se presenta como aislada.
+- `memoria`: memoria del proyecto al arrancar y extracción al cerrar
+  (`usuario`, `modelo`, `rutaUsuario`).
+- `lsp`: servidores de lenguaje por `lenguaje`, `comando` y `raiz`. La herramienta
+  `lsp` y los diagnósticos posteriores a una edición quedan disponibles.
+- `mcp`: servidores MCP por `id` y `comando`, con `env` como lista de nombres de
+  variables. Un agente solo ve los servidores que declara en `mcp` dentro de
+  `.harness/agents.json`.
 
 ## Uso
 
@@ -112,17 +125,20 @@ npm publish        # publica topicos-harness-fds en npm
 npm run check      # lint + typecheck + tests
 ```
 
-El proyecto sigue la regla de un test por escenario de los specs. Los tests
-corren con Vitest y no necesitan una credencial real: el provider simulado y un
-servidor HTTP local cubren el contrato.
+El proyecto sigue la regla de un test por escenario de los specs. Hoy `npm run
+check` pasa con 628 tests. Los tests corren con Vitest y no necesitan una
+credencial real: el provider simulado y servidores locales falsos cubren el
+contrato, incluidos LSP y MCP.
 
 ## Seguridad
 
 - No commitees `.harness/config.json` ni `.env`.
-- Las herramientas `read`, `write`, `edit`, `grep` y `glob` rechazan `.env`,
-  `.env.*` y `.harness/**`, así el modelo no puede leer la credencial.
+- Leer o escribir `.env`, `.env.*` o una ruta dentro de `.harness/` pide
+  aprobación obligatoria; `.env.example` queda exceptuado.
 - Los errores y resultados se sanean para redactar la credencial.
-- La ejecución de comandos usa un catálogo por plataforma y rechaza comandos
-  compuestos. En Windows usa PowerShell con allowlist; en Unix, lista negra.
+- La ejecución de comandos usa un catálogo por plataforma. Lo riesgoso (fuera del
+  catálogo o de la lista negra, composición, redirecciones, código de un
+  intérprete) pide aprobación obligatoria y nunca se omite por una regla
+  `permitir`. En Windows usa PowerShell con allowlist; en Unix, lista negra.
 - El camino de Windows está cubierto por tests unitarios, pero todavía no corrió
   en CI sobre Windows.

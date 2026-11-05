@@ -4,7 +4,7 @@ export interface ConfiguracionServidorMcp {
   id: string
   comando: string
   args?: string[] | undefined
-  env?: Record<string, string> | undefined
+  env?: string[] | undefined
 }
 
 export interface HerramientaMcp {

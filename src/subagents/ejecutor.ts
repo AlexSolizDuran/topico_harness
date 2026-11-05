@@ -34,6 +34,9 @@ export interface OpcionesEjecucionSubagente {
   enTurnoHijo?: boolean | undefined
   portero?: PorteroPermisos | undefined
   hooks?: EjecutorHooks | undefined
+  obtenerHerramientasExtra?:
+    | ((subagente: DefinicionAgente) => Promise<string[]>)
+    | undefined
 }
 
 export interface ResultadoSubagente {
@@ -159,7 +162,8 @@ export async function ejecutarTurnoSubagente(
     }
   }
 
-  const nombresPermitidos = subagente.herramientas.filter(
+  const extra = (await opciones.obtenerHerramientasExtra?.(subagente)) ?? []
+  const nombresPermitidos = [...subagente.herramientas, ...extra].filter(
     (nombre) =>
       (HERRAMIENTAS_SOLO_LECTURA.has(nombre) || nombre === 'skill') &&
       nombre !== 'task',

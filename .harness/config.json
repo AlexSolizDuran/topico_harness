@@ -5,6 +5,14 @@
     "guardar": true,
     "maximo": 50
   },
+  "sandbox": {
+    "habilitado": true
+  },
+  "memoria": {
+    "usuario": false
+  },
+  "lsp": [],
+  "mcp": [],
   "hooks": {
     "sessionStart": [],
     "preTool": [],

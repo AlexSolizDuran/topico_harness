@@ -32,7 +32,10 @@ export function formatearBloqueMemoria(
       if (entrada.origen) metaPartes.push(`origen: ${entrada.origen}`)
       const meta = metaPartes.length > 0 ? `[${metaPartes.join(' | ')}] ` : ''
 
-      lineas.push(`- ${meta}${entrada.titulo}`)
+      const detalle = entrada.rutaDetalle
+        ? ` [detalle: ${entrada.rutaDetalle}]`
+        : ''
+      lineas.push(`- ${meta}${entrada.titulo}${detalle}`)
     }
     bloques.push(lineas.join('\n'))
   }
@@ -45,7 +48,10 @@ export function formatearBloqueMemoria(
       '[Preferencia de usuario: no sobrescribe hechos del proyecto]',
     ]
     for (const entrada of activasUsuario) {
-      lineas.push(`- [Preferencia] ${entrada.titulo}`)
+      const detalle = entrada.rutaDetalle
+        ? ` [detalle: ${entrada.rutaDetalle}]`
+        : ''
+      lineas.push(`- [Preferencia] ${entrada.titulo}${detalle}`)
     }
     bloques.push(lineas.join('\n'))
   }

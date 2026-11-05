@@ -14,7 +14,8 @@
         "apply_patch",
         "shell",
         "task"
-      ]
+      ],
+      "mcp": []
     },
     {
       "nombre": "plan",

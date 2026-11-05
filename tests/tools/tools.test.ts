@@ -1103,7 +1103,7 @@ describe('tools Specification Tests', () => {
     it('Salida grande', async () => {
       // WHEN un comando produce una salida mayor que el límite configurado
       const limite = 100
-      const salidaLarga = 'A'.repeat(150) + 'FINAL_SALIDA'
+      const salidaLarga = `${'A'.repeat(150)}FINAL_SALIDA`
       const toolShell = crearHerramientaShell({
         plataforma: 'linux',
         maximoContenido: limite,
@@ -1113,7 +1113,8 @@ describe('tools Specification Tests', () => {
         }),
       })
 
-      const res = await toolShell!.ejecutar({ comando: 'test-grande' })
+      if (!toolShell) throw new Error('La herramienta shell no se creó')
+      const res = await toolShell.ejecutar({ comando: 'test-grande' })
 
       // THEN el modelo recibe los últimos N caracteres y una marca con la cantidad omitida
       expect(res).toContain('caracteres omitidos')
@@ -1130,14 +1131,15 @@ describe('tools Specification Tests', () => {
         ejecutor: async (cmd) => ({
           salida:
             cmd === 'cmd1'
-              ? '1'.repeat(200) + '_FIN1'
-              : '2'.repeat(200) + '_FIN2',
+              ? `${'1'.repeat(200)}_FIN1`
+              : `${'2'.repeat(200)}_FIN2`,
           codigoSalida: 0,
         }),
       })
 
-      const res1 = await toolShell!.ejecutar({ comando: 'cmd1' })
-      const res2 = await toolShell!.ejecutar({ comando: 'cmd2' })
+      if (!toolShell) throw new Error('La herramienta shell no se creó')
+      const res1 = await toolShell.ejecutar({ comando: 'cmd1' })
+      const res2 = await toolShell.ejecutar({ comando: 'cmd2' })
 
       // THEN la cola de cada comando se entrega por separado y no se mezcla con la del otro
       expect(res1).toContain('_FIN1')
@@ -1159,7 +1161,8 @@ describe('tools Specification Tests', () => {
         }),
       })
 
-      const res = await toolShell!.ejecutar({ comando: 'test-corto' })
+      if (!toolShell) throw new Error('La herramienta shell no se creó')
+      const res = await toolShell.ejecutar({ comando: 'test-corto' })
 
       // THEN el modelo recibe la salida completa
       expect(res).toBe(salidaCorta)
@@ -1179,7 +1182,8 @@ describe('tools Specification Tests', () => {
         }),
       })
 
-      const res = await toolShell!.ejecutar({ comando: 'test-error' })
+      if (!toolShell) throw new Error('La herramienta shell no se creó')
+      const res = await toolShell.ejecutar({ comando: 'test-error' })
 
       // THEN la cola entregada al modelo conserva el final de la salida de error
       expect(res).toContain('Comando terminó con código 1')
@@ -1199,7 +1203,8 @@ describe('tools Specification Tests', () => {
         }),
       })
 
-      const res = await toolShell!.ejecutar({ comando: 'test-marca' })
+      if (!toolShell) throw new Error('La herramienta shell no se creó')
+      const res = await toolShell.ejecutar({ comando: 'test-marca' })
 
       // THEN la marca indica la cantidad omitida y que la salida completa está disponible en la interfaz
       expect(res).toContain('200 caracteres omitidos')

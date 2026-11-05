@@ -35,9 +35,7 @@ describe('mcp specification scenarios', () => {
       const servidorConSecreto: ConfiguracionServidorMcp = {
         id: 'secure-server',
         comando: 'node',
-        env: {
-          GITHUB_TOKEN: 'ghp_secret_token_12345678901234567890',
-        },
+        env: ['ghp_secret_token_12345678901234567890'],
       }
       expect(() => new GestorMcp({ servidores: [servidorConSecreto] })).toThrow(
         /secreto literal/,

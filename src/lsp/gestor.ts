@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { formatearColaSalida } from '../tools/truncate.js'
@@ -13,6 +14,7 @@ import type {
 export interface OpcionesGestorLsp {
   servidores?: ConfiguracionServidorLsp[] | undefined
   timeoutMs?: number | undefined
+  timeoutDiagnosticosMs?: number | undefined
   maxBytesSalida?: number | undefined
 }
 
@@ -65,6 +67,15 @@ export class GestorLsp {
         error: `ERROR: No hay un servidor de lenguaje configurado para el archivo '${rutaArchivo}'.`,
       }
     }
+    return this.asegurarClienteParaLenguaje(lenguaje)
+  }
+
+  private async asegurarClienteParaLenguaje(
+    lenguaje?: string | undefined,
+  ): Promise<{ cliente?: ClienteLsp | undefined; error?: string | undefined }> {
+    if (!lenguaje) {
+      return { error: 'ERROR: No hay un servidor de lenguaje configurado.' }
+    }
 
     const config = this.servidoresConfig.get(lenguaje)
     if (!config) {
@@ -103,7 +114,12 @@ export class GestorLsp {
     }
 
     const archivoObjetivo = ruta ?? ''
-    const asegurado = await this.asegurarClienteParaArchivo(archivoObjetivo)
+    const asegurado =
+      operacion === 'workspaceSymbols' && !archivoObjetivo
+        ? await this.asegurarClienteParaLenguaje(
+            this.servidoresConfig.keys().next().value,
+          )
+        : await this.asegurarClienteParaArchivo(archivoObjetivo)
     if (asegurado.error || !asegurado.cliente) {
       return (
         asegurado.error ??
@@ -112,6 +128,7 @@ export class GestorLsp {
     }
 
     const uri = pathToFileURL(resolve(archivoObjetivo)).href
+    this.sincronizarDocumento(asegurado.cliente, archivoObjetivo, uri)
 
     try {
       let resultado = ''
@@ -199,33 +216,72 @@ export class GestorLsp {
       )
     }
 
-    try {
-      const uri = pathToFileURL(resolve(rutaArchivo)).href
-      const res = (await asegurado.cliente.enviarPeticion(
-        'textDocument/diagnostic',
-        {
-          textDocument: { uri },
-        },
-      )) as { items?: DiagnosticoLsp[] }
+    const cliente = asegurado.cliente
+    const uri = pathToFileURL(resolve(rutaArchivo)).href
 
-      const items = res?.items ?? []
-      if (items.length === 0) {
-        return ''
+    try {
+      // Los servidores reales publican diagnósticos al recibir didOpen o
+      // didChange. Se espera esa publicación antes de recurrir al pull.
+      const generacionPrevia =
+        typeof cliente.obtenerGeneracionDiagnosticos === 'function'
+          ? cliente.obtenerGeneracionDiagnosticos(uri)
+          : -1
+      this.sincronizarDocumento(cliente, rutaArchivo, uri)
+
+      if (typeof cliente.esperarDiagnosticosPublicados === 'function') {
+        await cliente.esperarDiagnosticosPublicados(
+          uri,
+          this.opciones.timeoutDiagnosticosMs,
+        )
+        const generacion =
+          typeof cliente.obtenerGeneracionDiagnosticos === 'function'
+            ? cliente.obtenerGeneracionDiagnosticos(uri)
+            : -1
+        if (generacion > generacionPrevia) {
+          return this.formatearDiagnosticos(cliente.obtenerDiagnosticos(uri))
+        }
       }
 
-      const texto = items
-        .map(
-          (d) =>
-            `[${d.gravedad?.toUpperCase() ?? 'ERROR'}] (${d.linea + 1}:${d.caracter + 1}): ${d.mensaje}`,
-        )
-        .join('\n')
+      const res = (await cliente.enviarPeticion('textDocument/diagnostic', {
+        textDocument: { uri },
+      })) as { items?: DiagnosticoLsp[] }
 
-      const maxBytes = this.opciones.maxBytesSalida ?? 64 * 1024
-      return formatearColaSalida(texto, maxBytes).cola
+      return this.formatearDiagnosticos(res?.items ?? [])
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       return `ERROR al obtener diagnósticos: ${msg}`
     }
+  }
+
+  private sincronizarDocumento(
+    cliente: ClienteLsp,
+    rutaArchivo: string,
+    uri: string,
+  ): void {
+    if (typeof cliente.sincronizarDocumento !== 'function') return
+    if (!existsSync(rutaArchivo)) return
+
+    try {
+      const texto = readFileSync(rutaArchivo, 'utf-8')
+      const lenguaje =
+        this.resolverLenguajeDeArchivo(rutaArchivo) ?? 'plaintext'
+      cliente.sincronizarDocumento(uri, lenguaje, texto)
+    } catch {
+      // Sin contenido legible no se puede abrir el documento; la operación
+      // sigue y el servidor responderá lo que tenga o fallará como texto.
+    }
+  }
+
+  private formatearDiagnosticos(items: DiagnosticoLsp[]): string {
+    if (items.length === 0) return ''
+    const texto = items
+      .map(
+        (d) =>
+          `[${d.gravedad?.toUpperCase() ?? 'ERROR'}] (${d.linea + 1}:${d.caracter + 1}): ${d.mensaje}`,
+      )
+      .join('\n')
+    const maxBytes = this.opciones.maxBytesSalida ?? 64 * 1024
+    return formatearColaSalida(texto, maxBytes).cola
   }
 
   public cerrar(): void {

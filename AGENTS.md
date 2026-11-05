@@ -11,12 +11,11 @@ cancela a mitad de tarea.
 
 **El modelo es el motor. El harness es el chasis.**
 
-La implementación cubre 12 de las 16 capacidades especificadas: los 31 changes de
-implementación de `openspec/changes/archive/` están implementados, más los changes
-de higiene y de specs. `src/` y `tests/` ya existen y `npm run check` pasa con 475
-tests. Los specs de `memory`, `sandbox`, `lsp` y `mcp` están acordados pero aún no
-implementados. La prueba de punta a punta contra OpenRouter también pasó, en modo
-plano y con herramientas reales.
+La implementación cubre las 16 capacidades especificadas: los 44 changes
+archivados en `openspec/changes/archive/` están implementados. `src/` y `tests/`
+existen y `npm run check` pasa con 628 tests. `memory`, `sandbox`, `lsp` y `mcp`
+están implementados y cableados al arranque. La prueba de punta a punta contra
+OpenRouter también pasó, en modo plano y con herramientas reales.
 
 ## Estado del OpenSpec
 
@@ -25,7 +24,7 @@ plano y con herramientas reales.
 | Capacidades | 16 |
 | Requisitos | 170 |
 | Escenarios | 606 |
-| Changes | 39 archivados (31 de implementación + 7 de specs + 1 de documentación), `npm run check` en verde (475 tests) |
+| Changes | 44 archivados, `npm run check` en verde (628 tests) |
 | Validado | contra las reglas del schema `spec-driven` |
 
 | Capacidad | Requisitos | Escenarios | Qué cubre |
@@ -42,10 +41,10 @@ plano y con herramientas reales.
 | `instructions` | 8 | 31 | carga automática del `AGENTS.md` raíz al arrancar y carga diferida de `AGENTS.md` anidados al explorar subdirectorios, topes de 32 KiB por archivo y 64 KiB total, herencia en subagentes |
 | `skills` | 6 | 21 | descubrimiento de `.opencode/skills/`, anuncio ligero en el prompt, herramienta `skill` bajo demanda sin recorte de contexto, permisos por identificador y panel `/skills` |
 | `hooks` | 6 | 25 | comandos externos en `sessionStart`, `sessionEnd`, `preTool`, `postTool` y `turnEnd`, códigos `0`/`1`/`2`, timeout de 30s, truncado a 8 KiB, sanitización de credenciales y permiso `hook` |
-| `memory` | 7 | 29 | memoria del proyecto al arrancar, distinción de instrucciones e historial, inyección con marcador y presupuesto, extracción al cerrar, curación manual, ámbito proyecto/usuario y fallo ante tope excedido |
-| `sandbox` | 6 | 19 | aislamiento del sistema operativo por herramienta, escape como error de texto, degradación sin fingir aislamiento, configuración y soporte de temporales |
-| `lsp` | 6 | 27 | servidores de lenguaje declarados, operaciones por símbolos, diagnósticos después de editar, fallo como texto, solo lectura con permisos y cierre con la sesión |
-| `mcp` | 6 | 27 | servidores MCP declarados, conexión bajo demanda, herramientas con esquema y texto, fallo aislado, permisos y aprobación obligatoria, y visibilidad por agente |
+| `memory` | 7 | 29 | índice cargado al arrancar e inyectado con marcador en el prompt, presupuesto propio, detalle bajo demanda con `read`, extracción al cerrar, curación manual, ámbito proyecto/usuario y fallo ante tope excedido |
+| `sandbox` | 6 | 19 | aislamiento del sistema operativo por herramienta con verificación real del mecanismo, línea de estado en el resultado de `shell`, aviso visible cuando degrada, configuración y temporales |
+| `lsp` | 6 | 27 | herramienta `lsp` registrada en el catálogo, servidores declarados, operaciones por símbolos, diagnósticos después de editar, fallo como texto, solo lectura con permisos y cierre con la sesión |
+| `mcp` | 6 | 27 | servidores MCP declarados, herramientas expuestas como entradas del catálogo, `env` por nombre, validación de esquema, conexión por agente, fallo aislado, permisos y cierre |
 
 `openspec/specs/<capacidad>/spec.md` es la fuente de verdad. La estructura de cada
 spec es fija: `## Purpose`, luego `## Requirements`, y dentro `### Requirement:`
@@ -213,8 +212,8 @@ core/ NO importa interface/.
 | `src/lsp/` | servidores de lenguaje, operaciones por símbolos y diagnósticos | `lsp` |
 | `src/mcp/` | servidores MCP, conexión bajo demanda y herramientas externas | `mcp` |
 
-Las carpetas de `memory`, `sandbox`, `lsp` y `mcp` todavía no existen: se crean al
-implementar esos specs.
+Las carpetas de `memory`, `sandbox`, `lsp` y `mcp` existen e implementan sus specs.
+`app.ts` las instancia y las cierra en `HarnessConstruido.cerrar()`.
 
 **`src/types.ts` contiene solo lo que cruza dos o más módulos.** Si un tipo lo
 usa un solo módulo, vive en ese módulo. Sin esa regla, `types.ts` se convierte en
@@ -271,7 +270,7 @@ test lee los archivos de `src/core/` y falla si encuentra un import de
 de un modelo, y un `any` ahí esconde exactamente los bugs que más duelan.
 
 **4. `npm run check` antes de dar por terminado un bloque.** Encadena lint,
-typecheck y tests. Hoy pasa con 462 tests.
+typecheck y tests. Hoy pasa con 628 tests.
 
 ## Stack
 
@@ -351,9 +350,8 @@ No contradigas los specs. En resumen:
    turno y la persistencia de sesiones es JSONL en `.harness/sesiones/`. Nada de
    SQLite.
 
-Especificado y pendiente de implementación: sandbox, LSP, MCP y memoria
-persistente entre sesiones. La implementación actual cubre las otras 12
-capacidades.
+Las 16 capacidades están implementadas: sandbox, LSP, MCP y memoria persistente
+entre sesiones se cablean desde `app.ts` y se cierran con la sesión.
 
 ## Reglas de trabajo
 

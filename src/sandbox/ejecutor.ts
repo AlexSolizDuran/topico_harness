@@ -100,13 +100,19 @@ export class EjecutorSandbox {
         })
 
         proc.on('error', (err) => {
-          // Un error del comando o sandbox vuelve como texto
+          // Un error del comando o sandbox vuelve como texto. Si el mecanismo
+          // no arrancó, el resultado no puede presentarse como aislado.
           const msg = `ERROR de ejecución: ${err.message}`
           resolve({
             codigoSalida: 1,
             stdout,
             stderr: stderr ? `${stderr}\n${msg}` : msg,
-            aislamiento,
+            aislamiento: aislamiento.aislado
+              ? {
+                  aislado: false,
+                  motivoDegradacion: `No se pudo iniciar el mecanismo '${aislamiento.mecanismo ?? 'de aislamiento'}': ${err.message}`,
+                }
+              : aislamiento,
           })
         })
 

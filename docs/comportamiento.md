@@ -1,7 +1,7 @@
 # Comportamiento de la aplicación
 
-Documento derivado exclusivamente de `src/` (65 archivos: 62 `.ts` y 3 `.tsx`,
-~10.500 líneas). Describe qué hace el harness y cómo se comporta en cada caso
+Documento derivado exclusivamente de `src/` (98 archivos: 95 `.ts` y 3 `.tsx`,
+~17.700 líneas). Describe qué hace el harness y cómo se comporta en cada caso
 borde, sin referencias a specs, tests ni documentación externa.
 
 ---
@@ -57,28 +57,38 @@ se guarda como `NaN` y falla en la validación de `prepararSesion`.
 | Paso | Produce | Consume |
 |---|---|---|
 | 1 | `directorioProyecto` = opción o `cwd` | — |
-| 2 | `RegistroHerramientas` (catálogo por defecto) | directorio |
-| 3 | `provider` + `modeloActivo` + `ventanaContexto` + credenciales | configuración |
-| 4 | `gestorTareas` y huecos `agentesLista` / `sesionRef` | — |
-| 5 | tools `task`, `task_status`, `task_cancel` | catálogo, tareas |
-| 6 | agentes validados y agente por defecto | catálogo completo, modelos |
-| 7 | `almacen` y `sesionInicial` | config, flags |
-| 8 | `SesionInteractiva` | todo lo anterior |
-| 9 | override de `--agente` | instancia de sesión |
+| 2 | `config` global + proyecto, solo si no le inyectaron proveedor | directorio |
+| 3 | `gestorLsp`, `gestorMcp`, `almacenMemoria` y bloque de memoria | config |
+| 4 | `RegistroHerramientas` (catálogo por defecto) | directorio |
+| 5 | tool `lsp` y decoración de `edit`/`write`/`apply_patch` con diagnósticos | catálogo, `gestorLsp` |
+| 6 | `provider` + `modeloActivo` + `ventanaContexto` + credenciales | configuración |
+| 7 | `gestorTareas` y huecos `agentesLista` / `sesionRef` | — |
+| 8 | tools `task`, `task_status`, `task_cancel` | catálogo, tareas |
+| 9 | agentes validados y agente por defecto | catálogo completo, modelos |
+| 10 | `almacen` y `sesionInicial` | config, flags |
+| 11 | `SesionInteractiva` | todo lo anterior |
+| 12 | override de `--agente` | instancia de sesión |
 
 Reglas del cableado:
 
 - Si le inyectan `proveedor`, no lee configuración; si no, `cargarConfig` +
-  `resolverProveedor` + `listarModelos`.
+  `resolverProveedor` + `listarModelos`. La configuración se carga temprano porque
+  de ella dependen `lsp`, `mcp` y `memoria`.
 - El catálogo por defecto registra `read`, `write`, `edit`, `apply_patch`, `glob`,
   `grep` y `shell` (según plataforma), cada uno validado por
   `registrarHerramientaConValidacion` (esquema no vacío, `accionPermiso` y
   `obtenerRecurso` obligatorios).
+- Después del catálogo se registra `lsp` y se envuelven `edit`, `write` y
+  `apply_patch` para devolver los diagnósticos del archivo modificado.
 - Las tools de delegación solo se registran si el catálogo no fue inyectado y no
   contiene ya `task`.
-- Los agentes se cargan **después** de registrar `task`, porque
+- Los agentes se cargan **después** de registrar `task` y `lsp`, porque
   `crearAgentesPorDefecto` copia el catálogo en ese momento y valida cada
   definición contra él.
+- Las herramientas MCP no están en el catálogo fijo: se construyen al inicio de
+  cada turno desde los servidores que declara el agente activo y se agregan al
+  final del orden.
+- `cerrar()` ejecuta `sessionEnd`, extrae memoria, y cierra LSP, MCP y sandbox.
 - La persistencia se activa solo si nadie la apagó y hay una razón (config
   cargada, almacén inyectado, `--sesion`, `--rama-de` o `--continuar`).
 - Prioridad de reanudación: `ramaDe` > `sesionId` > `continuar`.
@@ -243,9 +253,11 @@ Catálogo por plataforma (`tools/catalog.ts:64`).
 | `glob` | `glob` | sí | patrón → regex, solo archivos, devuelve JSON ordenado; patrones con `..` devuelven `[]` |
 | `grep` | `grep` | sí | búsqueda literal; devuelve `ruta:línea: texto`; omite archivos ilegibles |
 | `shell` | `shell` / `shell_compuesto` / `shell_redireccion` | no | ejecuta una invocación simple; lo riesgoso pide aprobación obligatoria |
+| `lsp` | `lsp` | sí | operaciones semánticas por símbolos; solo lectura, falla como texto |
 | `task` | `subagent` | no | delega a un subagente (sección 7) |
 | `task_status` | `read` | sí | estado de una tarea background o listado completo |
 | `task_cancel` | `subagent` | no | cancela una tarea en curso |
+| `<servidor>_<herramienta>` | `mcp` | sí | herramienta externa MCP; se anuncia solo si el agente declara el servidor y se valida contra el JSON Schema del servidor |
 
 ### 5.1 `shell` (`tools/shell.ts`)
 
@@ -272,6 +284,9 @@ Catálogo por plataforma (`tools/catalog.ts:64`).
   aprobación obligatoria sin validar el contenido.
 - Unix usa `exec` con `maxBuffer` de 10 MB; código de salida distinto de 0 se
   informa con la salida.
+- Cuando hay ejecutor de sandbox, el resultado agrega `Aislamiento: activo
+  (<mecanismo>)` o `Aislamiento: no disponible — <motivo>`. La primera degradación
+  del proceso también emite un aviso visible.
 
 ### 5.2 Rutas (`tools/path.ts`)
 
@@ -344,8 +359,9 @@ Campos: `nombre`, `descripcion`, `modo` (`primario` | `subagente` | `ambos`),
 `herramientas`, `prompt?`, `modelo?`, `permisos?`.
 
 Validación estricta: nombre único, modo válido, lista de herramientas existente en
-el catálogo, subagentes limitados a `read`/`glob`/`grep`, modelo presente en la
-configuración, permisos con acción/recurso/efecto válidos.
+el catálogo, subagentes limitados a `read`/`glob`/`grep`/`skill`/`lsp`, modelo
+presente en la configuración, permisos con acción/recurso/efecto válidos y `mcp`
+con identificadores existentes en la configuración.
 
 ### 7.2 Carga (`agents/cargar.ts:115`)
 
@@ -369,7 +385,8 @@ agente.
 - Solo agentes `subagente` o `ambos` son lanzables.
 - Contexto aislado: arranca con un único mensaje `user` con el pedido; no hereda
   el historial del padre.
-- Herramientas: intersección con solo lectura y exclusión de `task`.
+- Herramientas: intersección con solo lectura (`read`, `glob`, `grep`, `skill`,
+  `lsp`) y exclusión de `task`.
 - Presupuesto propio sobre la ventana del modelo del subagente (heredada o
   resuelta); si el pedido solo ya lo excede, devuelve error.
 - Pasos y modelo propios; prompt base + prompt del agente.
@@ -497,7 +514,103 @@ Sin TTY, cada snapshot del estado se traduce a líneas `[Sistema]`, `[Usuario]`,
 
 ---
 
-## 11. Reglas transversales
+## 12. Sandbox
+
+`EjecutorSandbox` envuelve la ejecución de `shell`:
+
+- `determinarMecanismoAislamiento` no asume que el mecanismo exista. En Linux
+  comprueba `bwrap --version`; en macOS, `sandbox-exec`. Si el binario falta,
+  devuelve `aislado: false` con el motivo. Windows y otras plataformas degradan
+  siempre con motivo.
+- `sandbox.habilitado: false` deshabilita el aislamiento explícitamente.
+  `mecanismoForzado` elige el envoltorio sin detección (útil para pruebas);
+  `ninguno` desactiva.
+- Una ejecución aislada crea un directorio temporal y lo usa como
+  `TMPDIR`/`TEMP`. Con `bwrap` la raíz es de solo lectura y el proyecto y el
+  temporal son escribibles; con `sandbox-exec` se aplica un perfil equivalente. El
+  temporal se borra al terminar el comando y al cerrar el ejecutor.
+- Si el proceso del sandbox falla al arrancar, el resultado se degrada a
+  `aislado: false` con el motivo: nunca se presenta como aislado algo que no
+  corrió dentro del mecanismo.
+- `shell` agrega la línea de estado al resultado y avisa una vez por proceso
+  cuando la ejecución no está aislada.
+
+---
+
+## 13. LSP
+
+`GestorLsp` se instancia con los servidores de `lsp` de la configuración; una
+`raiz` relativa se resuelve contra el proyecto. Sin servidores, el gestor existe
+igual y la tool devuelve `ERROR: No hay un servidor de lenguaje configurado...`.
+
+- `ClienteLsp` habla JSON-RPC con `Content-Length`. Hace `initialize`,
+  `initialized`, `didOpen`/`didChange` con el contenido actual del archivo y
+  `shutdown`/`exit` antes de matar el proceso.
+- Las notificaciones `textDocument/publishDiagnostics` ya no se descartan: se
+  convierten a `DiagnosticoLsp` por URI, incrementan una generación y despiertan
+  a quien espera una publicación nueva.
+- La tool `lsp` acepta `definition`, `references`, `documentSymbols`,
+  `workspaceSymbols`, `hover` y `diagnostics`; valida el esquema, evalúa la acción
+  `lsp` y devuelve texto truncado. `workspaceSymbols` funciona sin `ruta` usando
+  el primer servidor configurado.
+- Después de `edit`, `write` o `apply_patch`, el catálogo consulta solo los
+  archivos afectados. Con `didChange`, espera la publicación nueva; si el servidor
+  no publica, intenta `textDocument/diagnostic`. Los diagnósticos se agregan
+  truncados al resultado y un fallo se informa como texto sin revertir la edición.
+- El servidor arranca en la primera operación y se cierra con `cerrar()`; no
+  quedan procesos vivos.
+
+---
+
+## 14. MCP
+
+`GestorMcp` se instancia con los servidores de `mcp`. Cada servidor declara `id`,
+`comando`, `args` y `env`. `env` es una lista de **nombres**: el cliente resuelve
+cada valor desde `process.env` al arrancar y omite los ausentes. Un valor literal
+en `env` se rechaza al validar la configuración.
+
+- Al inicio de cada turno se conectan solo los servidores que declara el agente
+  activo (`mcp` en su definición); los no declarados no se tocan. La conexión es
+  idempotente y se reintenta en turnos posteriores si falló.
+- `tools/list` se traduce a herramientas con nombre `<servidor>_<herramienta>`.
+  Se registran al final del catálogo para no reordenar las anteriores.
+- Cada herramienta se convierte en una entrada del catálogo con `accionPermiso:
+  'mcp'` y recurso `<servidor>/<herramienta>`. Si el servidor declara `riesgoso`
+  o `motivoRiesgo`, la aprobación se eleva a obligatoria con ese motivo.
+- Los argumentos se validan contra un subconjunto real de JSON Schema (`type`,
+  `properties`, `required`, `enum`, `items`, `additionalProperties`). Un argumento
+  inválido vuelve como texto y no ejecuta la herramienta.
+- Un servidor que no arranca, se cae o vence el timeout devuelve el fallo como
+  texto; la sesión sigue. `cerrar()` mata todos los procesos.
+
+---
+
+## 15. Memoria
+
+`AlmacenMemoria` vive en `.harness/memory/`: `index.md` con el índice y un
+`<id>.md` por detalle.
+
+- Al construir la sesión se carga el índice del proyecto y, si `memoria.usuario`
+  está activo, el de `rutaUsuario` o el del usuario. `formatearBloqueMemoria`
+  arma un bloque de sistema con encabezado, marcador de «memoria aprendida»,
+  origen, fecha y la ruta del detalle. El detalle no se carga en el arranque: el
+  modelo lo pide con `read`.
+- El bloque se concatena al prompt después de las instrucciones y antes de las
+  skills. Sus tokens se suman en `tokensSistema` y en la medición previa al envío,
+  así que entra en el presupuesto como cualquier otro contexto. Si no cabe, el
+  envío se frena con un aviso; la memoria no se recorta en silencio.
+- Al cerrar, después de `sessionEnd`, se ejecuta `extraerHechosDeSesion` sobre el
+  historial. Solo se guardan líneas concretas (convenciones, decisiones,
+  errores ya intentados); lo obvio y lo deducible del código se descarta.
+  `resolverContradicciones` marca la entrada vieja como obsoleta y
+  `guardarEntradas` escribe el índice y los detalles después de validar los topes.
+- Un fallo de extracción o de escritura se informa como aviso y no impide cerrar.
+  Superar el tope de archivo o total falla con nombre, tamaño y tope, sin guardar
+  una versión truncada.
+
+---
+
+## 16. Reglas transversales
 
 1. **Un error no se tira: vuelve como texto.** Tools, subagentes, sesiones y
    aprobaciones fallan con `ERROR: ...\nLa operación no se completó.` para que el

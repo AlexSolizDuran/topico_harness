@@ -1,8 +1,8 @@
 # Preguntas y decisiones
 
 Lo que quedó por decidir y el registro de lo ya decidido. Las 16 capacidades de
-`openspec/specs/` están especificadas: 12 implementadas y 4 pendientes (`memory`,
-`sandbox`, `lsp` y `mcp`). Ninguna decisión abierta bloquea el funcionamiento
+`openspec/specs/` están especificadas e implementadas, incluidos `memory`,
+`sandbox`, `lsp` y `mcp`. Ninguna decisión abierta bloquea el funcionamiento
 actual.
 
 ## Resueltas
@@ -55,7 +55,8 @@ estructurales en inglés, porque el CLI los parsea.
 
 **Resuelto (`160-subagentes`, `280-agentes-anidados`).** Contexto de mensajes
 vacío + el objetivo explícito en el prompt (`task`), profundidad máxima 1,
-intersección de herramientas de solo lectura (`read`, `glob`, `grep`, `skill`) y
+intersección de herramientas de solo lectura (`read`, `glob`, `grep`, `skill`,
+`lsp`) y
 presupuesto/límite de pasos propios. Heredan el conjunto de instrucciones
 (`AGENTS.md`) ya cargadas por el padre sin cargar las suyas propias, y disparan
 únicamente los hooks `preTool` y `postTool`.
@@ -111,13 +112,16 @@ antiguo y `99%` compactación completa).
 
 ### ¿Qué entra en los specs nuevos?
 
-**Resuelto (`315` a `350`).** `memory` guarda memoria del proyecto por defecto y
-admite ámbito de usuario; un archivo que supera el tope falla en vez de truncarse.
-`sandbox` aísla por herramienta; en Windows, si no hay aislamiento disponible,
-degrada con un aviso visible y no finge. `lsp` y `mcp` declaran servidores en la
-configuración, fallan como texto y respetan permisos; las herramientas MCP piden
-aprobación obligatoria. Las acciones de permiso `leer símbolos` y
-`usar herramienta externa` se suman a las existentes.
+**Resuelto e implementado (`315` a `360`).** `memory` guarda memoria del proyecto
+por defecto y admite ámbito de usuario; el índice se inyecta con marcador, cuenta
+en el presupuesto y los hechos se extraen al cerrar; un archivo que supera el tope
+falla en vez de truncarse. `sandbox` aísla por herramienta comprobando que el
+mecanismo exista; en Windows, si no hay aislamiento disponible, degrada con un
+aviso visible y no finge. `lsp` y `mcp` declaran servidores en la configuración,
+fallan como texto y respetan permisos; las herramientas MCP se anuncian solo a
+los agentes que declaran su servidor y piden aprobación obligatoria cuando
+declaran riesgo. Las acciones de permiso `leer símbolos` y `usar herramienta
+externa` se suman a las existentes.
 
 ## Postergadas
 

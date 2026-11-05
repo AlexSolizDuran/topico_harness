@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { ConfiguracionServidorLsp } from '../lsp/types.js'
+import type { ConfiguracionServidorMcp } from '../mcp/types.js'
+import type { ConfiguracionSandbox } from '../sandbox/types.js'
 import type { EventoHook } from '../types.js'
 
 export class ErrorConfiguracion extends Error {
@@ -53,6 +56,12 @@ export interface ConfiguracionContexto {
   umbrales?: ConfiguracionUmbrales | undefined
 }
 
+export interface ConfiguracionMemoria {
+  usuario?: boolean | undefined
+  modelo?: string | undefined
+  rutaUsuario?: string | undefined
+}
+
 export interface ConfiguracionHarness {
   proveedorPorDefecto?: string | undefined
   modeloPorDefecto?: string | undefined
@@ -60,6 +69,10 @@ export interface ConfiguracionHarness {
   hooks?: ConfiguracionHooks | undefined
   umbrales?: ConfiguracionUmbrales | undefined
   contexto?: ConfiguracionContexto | undefined
+  sandbox?: ConfiguracionSandbox | undefined
+  memoria?: ConfiguracionMemoria | undefined
+  lsp?: ConfiguracionServidorLsp[] | undefined
+  mcp?: ConfiguracionServidorMcp[] | undefined
   proveedores: Record<string, ConfiguracionProveedor>
 }
 
@@ -419,6 +432,208 @@ function validarContexto(valor: unknown, ruta: string): ConfiguracionContexto {
   }
 }
 
+function validarSandbox(valor: unknown, ruta: string): ConfiguracionSandbox {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'sandbox' debe ser un objeto en ${ruta}`)
+  }
+  if (valor.habilitado !== undefined && typeof valor.habilitado !== 'boolean') {
+    throw new ErrorConfiguracion(
+      `'sandbox.habilitado' debe ser booleano en ${ruta}`,
+    )
+  }
+  if (
+    valor.permitirLecturaFuera !== undefined &&
+    typeof valor.permitirLecturaFuera !== 'boolean'
+  ) {
+    throw new ErrorConfiguracion(
+      `'sandbox.permitirLecturaFuera' debe ser booleano en ${ruta}`,
+    )
+  }
+  if (
+    valor.mecanismoForzado !== undefined &&
+    (typeof valor.mecanismoForzado !== 'string' ||
+      valor.mecanismoForzado.trim().length === 0)
+  ) {
+    throw new ErrorConfiguracion(
+      `'sandbox.mecanismoForzado' debe ser texto no vacío en ${ruta}`,
+    )
+  }
+  return {
+    ...(valor.habilitado !== undefined ? { habilitado: valor.habilitado } : {}),
+    ...(valor.permitirLecturaFuera !== undefined
+      ? { permitirLecturaFuera: valor.permitirLecturaFuera }
+      : {}),
+    ...(valor.mecanismoForzado !== undefined
+      ? { mecanismoForzado: valor.mecanismoForzado }
+      : {}),
+  }
+}
+
+function validarMemoria(valor: unknown, ruta: string): ConfiguracionMemoria {
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(`'memoria' debe ser un objeto en ${ruta}`)
+  }
+  if (valor.usuario !== undefined && typeof valor.usuario !== 'boolean') {
+    throw new ErrorConfiguracion(
+      `'memoria.usuario' debe ser booleano en ${ruta}`,
+    )
+  }
+  if (
+    valor.modelo !== undefined &&
+    (typeof valor.modelo !== 'string' || valor.modelo.trim().length === 0)
+  ) {
+    throw new ErrorConfiguracion(
+      `'memoria.modelo' debe ser texto no vacío en ${ruta}`,
+    )
+  }
+  if (
+    valor.rutaUsuario !== undefined &&
+    (typeof valor.rutaUsuario !== 'string' ||
+      valor.rutaUsuario.trim().length === 0)
+  ) {
+    throw new ErrorConfiguracion(
+      `'memoria.rutaUsuario' debe ser texto no vacío en ${ruta}`,
+    )
+  }
+  return {
+    ...(valor.usuario !== undefined ? { usuario: valor.usuario } : {}),
+    ...(valor.modelo !== undefined ? { modelo: valor.modelo } : {}),
+    ...(valor.rutaUsuario !== undefined
+      ? { rutaUsuario: valor.rutaUsuario }
+      : {}),
+  }
+}
+
+function validarListaTextos(
+  valor: unknown,
+  campo: string,
+  ruta: string,
+): string[] | undefined {
+  if (valor === undefined) return undefined
+  if (!Array.isArray(valor)) {
+    throw new ErrorConfiguracion(`'${campo}' debe ser una lista en ${ruta}`)
+  }
+  const textos: string[] = []
+  for (const item of valor) {
+    if (typeof item !== 'string' || item.trim().length === 0) {
+      throw new ErrorConfiguracion(
+        `'${campo}' contiene un valor inválido en ${ruta}`,
+      )
+    }
+    textos.push(item)
+  }
+  return textos
+}
+
+function validarServidorLsp(
+  valor: unknown,
+  indice: number,
+  ruta: string,
+): ConfiguracionServidorLsp {
+  const posicion = indice + 1
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(
+      `La entrada LSP ${posicion} debe ser un objeto en ${ruta}`,
+    )
+  }
+  if (typeof valor.lenguaje !== 'string' || valor.lenguaje.trim() === '') {
+    throw new ErrorConfiguracion(
+      `La entrada LSP ${posicion} no declara 'lenguaje' en ${ruta}`,
+    )
+  }
+  if (typeof valor.comando !== 'string' || valor.comando.trim() === '') {
+    throw new ErrorConfiguracion(
+      `La entrada LSP ${posicion} para '${valor.lenguaje}' no declara 'comando' en ${ruta}`,
+    )
+  }
+  if (typeof valor.raiz !== 'string' || valor.raiz.trim() === '') {
+    throw new ErrorConfiguracion(
+      `La entrada LSP ${posicion} para '${valor.lenguaje}' no declara 'raiz' en ${ruta}`,
+    )
+  }
+  return {
+    lenguaje: valor.lenguaje,
+    comando: valor.comando,
+    raiz: valor.raiz,
+    ...(valor.extensiones !== undefined
+      ? {
+          extensiones: validarListaTextos(
+            valor.extensiones,
+            'lsp.extensiones',
+            ruta,
+          ),
+        }
+      : {}),
+    ...(valor.args !== undefined
+      ? { args: validarListaTextos(valor.args, 'lsp.args', ruta) }
+      : {}),
+  }
+}
+
+function validarLsp(valor: unknown, ruta: string): ConfiguracionServidorLsp[] {
+  if (!Array.isArray(valor)) {
+    throw new ErrorConfiguracion(`'lsp' debe ser una lista en ${ruta}`)
+  }
+  return valor.map((item, indice) => validarServidorLsp(item, indice, ruta))
+}
+
+function esNombreDeVariableEntorno(valor: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(valor)
+}
+
+function validarServidorMcp(
+  valor: unknown,
+  indice: number,
+  ruta: string,
+): ConfiguracionServidorMcp {
+  const posicion = indice + 1
+  if (!esObjeto(valor)) {
+    throw new ErrorConfiguracion(
+      `La entrada MCP ${posicion} debe ser un objeto en ${ruta}`,
+    )
+  }
+  if (typeof valor.id !== 'string' || valor.id.trim() === '') {
+    throw new ErrorConfiguracion(
+      `La entrada MCP ${posicion} no declara 'id' en ${ruta}`,
+    )
+  }
+  if (typeof valor.comando !== 'string' || valor.comando.trim() === '') {
+    throw new ErrorConfiguracion(
+      `El servidor MCP '${valor.id}' no declara 'comando' en ${ruta}`,
+    )
+  }
+
+  const env = validarListaTextos(valor.env, 'mcp.env', ruta)
+  if (env) {
+    for (const nombre of env) {
+      if (
+        !esNombreDeVariableEntorno(nombre) ||
+        /^(sk-|ghp_|github_pat_|xox[baprs]-|bearer\s)/i.test(nombre)
+      ) {
+        throw new ErrorConfiguracion(
+          `El servidor MCP '${valor.id}' declara un valor literal en 'env' en ${ruta}. Usá el nombre de una variable de entorno.`,
+        )
+      }
+    }
+  }
+
+  return {
+    id: valor.id,
+    comando: valor.comando,
+    ...(valor.args !== undefined
+      ? { args: validarListaTextos(valor.args, 'mcp.args', ruta) }
+      : {}),
+    ...(env !== undefined ? { env } : {}),
+  }
+}
+
+function validarMcp(valor: unknown, ruta: string): ConfiguracionServidorMcp[] {
+  if (!Array.isArray(valor)) {
+    throw new ErrorConfiguracion(`'mcp' debe ser una lista en ${ruta}`)
+  }
+  return valor.map((item, indice) => validarServidorMcp(item, indice, ruta))
+}
+
 function validarConfig(
   datos: unknown,
   ruta: string,
@@ -461,6 +676,14 @@ function validarConfig(
     ...(datos.hooks !== undefined
       ? { hooks: validarHooks(datos.hooks, ruta) }
       : {}),
+    ...(datos.sandbox !== undefined
+      ? { sandbox: validarSandbox(datos.sandbox, ruta) }
+      : {}),
+    ...(datos.memoria !== undefined
+      ? { memoria: validarMemoria(datos.memoria, ruta) }
+      : {}),
+    ...(datos.lsp !== undefined ? { lsp: validarLsp(datos.lsp, ruta) } : {}),
+    ...(datos.mcp !== undefined ? { mcp: validarMcp(datos.mcp, ruta) } : {}),
     ...(umbralesDirectos ? { umbrales: umbralesDirectos } : {}),
     ...(contextoValidado ? { contexto: contextoValidado } : {}),
   }
@@ -502,6 +725,22 @@ function combinarHooks(
   }
 }
 
+function combinarListaPorClave<T>(
+  globalLista: T[] | undefined,
+  proyectoLista: T[] | undefined,
+  clave: (item: T) => string,
+): T[] | undefined {
+  if (!globalLista && !proyectoLista) return undefined
+  const mapa = new Map<string, T>()
+  for (const item of globalLista ?? []) {
+    mapa.set(clave(item), item)
+  }
+  for (const item of proyectoLista ?? []) {
+    mapa.set(clave(item), item)
+  }
+  return Array.from(mapa.values())
+}
+
 /**
  * Carga el config global y el del proyecto. El del proyecto pisa al global.
  * Un proveedor declarado en el proyecto reemplaza por completo al del global.
@@ -525,6 +764,22 @@ export function cargarConfig(
   }
 
   const hooksCombinados = combinarHooks(global?.hooks, proyecto?.hooks)
+  const lspCombinado = combinarListaPorClave(global?.lsp, proyecto?.lsp, (s) =>
+    s.lenguaje.toLowerCase(),
+  )
+  const mcpCombinado = combinarListaPorClave(
+    global?.mcp,
+    proyecto?.mcp,
+    (s) => s.id,
+  )
+  const sandboxCombinado =
+    global?.sandbox || proyecto?.sandbox
+      ? { ...global?.sandbox, ...proyecto?.sandbox }
+      : undefined
+  const memoriaCombinada =
+    global?.memoria || proyecto?.memoria
+      ? { ...global?.memoria, ...proyecto?.memoria }
+      : undefined
   const umbralesCombinados =
     proyecto?.umbrales ??
     proyecto?.contexto?.umbrales ??
@@ -552,6 +807,10 @@ export function cargarConfig(
       ? { sesiones: { ...global?.sesiones, ...proyecto?.sesiones } }
       : {}),
     ...(hooksCombinados ? { hooks: hooksCombinados } : {}),
+    ...(sandboxCombinado ? { sandbox: sandboxCombinado } : {}),
+    ...(memoriaCombinada ? { memoria: memoriaCombinada } : {}),
+    ...(lspCombinado ? { lsp: lspCombinado } : {}),
+    ...(mcpCombinado ? { mcp: mcpCombinado } : {}),
     ...(umbralesCombinados
       ? {
           umbrales: umbralesCombinados,

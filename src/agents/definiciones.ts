@@ -7,6 +7,7 @@ export const HERRAMIENTAS_SOLO_LECTURA: ReadonlySet<string> = new Set([
   'glob',
   'grep',
   'skill',
+  'lsp',
 ])
 
 export interface DefinicionAgente {
@@ -14,6 +15,7 @@ export interface DefinicionAgente {
   descripcion: string
   modo: ModoAgente
   herramientas: string[]
+  mcp?: string[] | undefined
   prompt?: string | undefined
   modelo?: string | undefined
   permisos?: ReglaPermiso[] | undefined
@@ -29,6 +31,7 @@ export class ErrorDefinicionAgente extends Error {
 export interface OpcionesValidacionAgentes {
   herramientasDisponibles: Iterable<string>
   modelosDisponibles?: Iterable<string> | undefined
+  servidoresMcp?: Iterable<string> | undefined
 }
 
 const MODOS_VALIDOS = new Set<ModoAgente>(['primario', 'subagente', 'ambos'])
@@ -142,6 +145,34 @@ function validarPermisosAgente(
   })
 }
 
+function validarServidoresMcpAgente(
+  nombre: string,
+  mcpRaw: unknown,
+  servidoresDisponibles?: Set<string>,
+): string[] | undefined {
+  if (mcpRaw === undefined) return undefined
+  if (!Array.isArray(mcpRaw)) {
+    throw new ErrorDefinicionAgente(
+      `El agente '${nombre}' declara servidores MCP inválidos.`,
+    )
+  }
+  const servidores: string[] = []
+  for (const item of mcpRaw) {
+    if (typeof item !== 'string' || item.trim().length === 0) {
+      throw new ErrorDefinicionAgente(
+        `El agente '${nombre}' declara un servidor MCP inválido.`,
+      )
+    }
+    if (servidoresDisponibles && !servidoresDisponibles.has(item)) {
+      throw new ErrorDefinicionAgente(
+        `El agente '${nombre}' declara un servidor MCP inexistente: '${item}'.`,
+      )
+    }
+    if (!servidores.includes(item)) servidores.push(item)
+  }
+  return servidores
+}
+
 export function validarDefinicionAgente(
   datos: unknown,
   opciones: OpcionesValidacionAgentes,
@@ -183,6 +214,9 @@ export function validarDefinicionAgente(
   const modelos = opciones.modelosDisponibles
     ? new Set(opciones.modelosDisponibles)
     : undefined
+  const servidoresMcp = opciones.servidoresMcp
+    ? new Set(opciones.servidoresMcp)
+    : undefined
 
   const herramientas = validarHerramientasAgente(
     nombre,
@@ -192,12 +226,14 @@ export function validarDefinicionAgente(
   )
   const modelo = validarModeloAgente(nombre, datos.modelo, modelos)
   const permisos = validarPermisosAgente(nombre, datos.permisos)
+  const mcp = validarServidoresMcpAgente(nombre, datos.mcp, servidoresMcp)
 
   return {
     nombre,
     descripcion,
     modo: datos.modo,
     herramientas,
+    ...(mcp !== undefined ? { mcp } : {}),
     ...(datos.prompt !== undefined ? { prompt: datos.prompt } : {}),
     ...(modelo !== undefined ? { modelo } : {}),
     ...(permisos !== undefined ? { permisos } : {}),

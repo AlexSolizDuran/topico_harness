@@ -25,7 +25,7 @@ import {
   estimarTokensTexto,
 } from '../context/tokens.js'
 import { recortarSalidasHerramientasViejas } from '../context/trimming.js'
-import type { RegistroHerramientas } from '../core/registry.js'
+import { RegistroHerramientas } from '../core/registry.js'
 import { ejecutarTurno, type PreparacionHistorial } from '../core/turn.js'
 import { ErrorBloqueoHook, type GestorHooks } from '../hooks/ejecutar.js'
 import type { GestorInstrucciones } from '../instructions/cargar-instrucciones.js'
@@ -126,12 +126,20 @@ export interface OpcionesSesion {
   gestorTareas?: GestorTareasBackground | undefined
   instruccionesProyecto?: string | undefined
   tokensSistemaInstrucciones?: number | undefined
+  memoriaInyectada?: string | undefined
+  tokensSistemaMemoria?: number | undefined
   gestorInstrucciones?: GestorInstrucciones | undefined
   skills?: EstadoSkillVisual[] | undefined
   skillsOmitidas?: SkillOmitidaVisual[] | undefined
   avisosIniciales?: string[] | undefined
   gestorHooks?: GestorHooks | undefined
   sessionStartPendiente?: boolean | undefined
+  obtenerRegistroExtra?:
+    | ((
+        agente: DefinicionAgente,
+        portero: PorteroPermisos,
+      ) => Promise<RegistroHerramientas | undefined>)
+    | undefined
 }
 
 /**
@@ -178,6 +186,8 @@ export class SesionInteractiva {
   private promptSistemaBase: string
   private instruccionesProyecto: string
   private tokensSistemaInstrucciones = 0
+  private memoriaInyectada: string
+  private tokensSistemaMemoria = 0
   private gestorInstrucciones?: GestorInstrucciones | undefined
   private anunciosSkills: string[] = []
   private skillsListado: EstadoSkillVisual[] = []
@@ -198,6 +208,12 @@ export class SesionInteractiva {
     | undefined
   private cancelacionSolicitada = false
   private gestorRecordatorios = new GestorRecordatorios()
+  private obtenerRegistroExtra?:
+    | ((
+        agente: DefinicionAgente,
+        portero: PorteroPermisos,
+      ) => Promise<RegistroHerramientas | undefined>)
+    | undefined
 
   constructor(opciones: OpcionesSesion) {
     this.proveedor = opciones.proveedor
@@ -216,6 +232,7 @@ export class SesionInteractiva {
         ? `${opciones.proveedor.nombre}/${opciones.proveedor.modelo}`
         : '')
     this.fabricaProveedor = opciones.fabricaProveedor
+    this.obtenerRegistroExtra = opciones.obtenerRegistroExtra
     this.promptSistemaBase = opciones.promptSistema ?? ''
     this.gestorInstrucciones = opciones.gestorInstrucciones
     this.instruccionesProyecto =
@@ -227,6 +244,10 @@ export class SesionInteractiva {
       (this.instruccionesProyecto
         ? estimarTokensTexto(this.instruccionesProyecto)
         : 0)
+    this.memoriaInyectada = opciones.memoriaInyectada ?? ''
+    this.tokensSistemaMemoria =
+      opciones.tokensSistemaMemoria ??
+      (this.memoriaInyectada ? estimarTokensTexto(this.memoriaInyectada) : 0)
     this.skillsListado = (opciones.skills ?? []).map((s) => ({
       ...s,
       cargada: Boolean(s.cargada),
@@ -402,6 +423,7 @@ export class SesionInteractiva {
     const partes: string[] = []
     if (this.promptSistemaBase) partes.push(this.promptSistemaBase)
     if (this.instruccionesProyecto) partes.push(this.instruccionesProyecto)
+    if (this.memoriaInyectada) partes.push(this.memoriaInyectada)
     if (this.anunciosSkills.length > 0) {
       partes.push(`Skills disponibles:\n${this.anunciosSkills.join('\n')}`)
     }
@@ -513,6 +535,11 @@ export class SesionInteractiva {
     return this.ultimoEstadoTurno
   }
 
+  /** Copia del historial para la extracción de memoria al cerrar. */
+  obtenerHistorial(): Mensaje[] {
+    return [...this.mensajesHistorial]
+  }
+
   obtenerModeloActivo(): string {
     return this.modeloActivo
   }
@@ -563,7 +590,8 @@ export class SesionInteractiva {
       this.tokensAcumulados,
       this.ultimaCompactacion,
       {
-        tokensSistema: this.tokensSistemaInstrucciones,
+        tokensSistema:
+          this.tokensSistemaInstrucciones + this.tokensSistemaMemoria,
         tokensSkills,
         etapaAplicada: this.ultimaEtapaContexto,
         tokensRecuperados: this.ultimosTokensRecuperados,
@@ -683,6 +711,7 @@ export class SesionInteractiva {
     return (
       tokensMensajes +
       this.tokensSistemaInstrucciones +
+      this.tokensSistemaMemoria +
       this.calcularTokensSkills()
     )
   }
@@ -773,14 +802,31 @@ export class SesionInteractiva {
     }
   }
 
-  private obtenerRegistroDelTurno(
+  private async obtenerRegistroDelTurno(
     agente: DefinicionAgente | undefined,
-  ): RegistroHerramientas {
-    if (!agente) return this.registro
-    if (!this.agentesExplicito && agente.nombre === 'build') {
-      return this.registro
+  ): Promise<RegistroHerramientas> {
+    const extra = agente
+      ? await this.obtenerRegistroExtra?.(agente, this.obtenerPorteroActivo())
+      : undefined
+    let base: RegistroHerramientas
+    if (!agente) {
+      base = this.registro
+    } else if (!this.agentesExplicito && agente.nombre === 'build') {
+      base = this.registro
+    } else {
+      base = this.registro.filtrar(agente.herramientas)
     }
-    return this.registro.filtrar(agente.herramientas)
+    if (!extra || extra.listarNombres().length === 0) {
+      return base
+    }
+    const combinado = new RegistroHerramientas()
+    for (const entrada of base.listarEntradas()) {
+      combinado.registrar(entrada)
+    }
+    for (const entrada of extra.listarEntradas()) {
+      combinado.registrar(entrada)
+    }
+    return combinado
   }
 
   private obtenerProveedorDelTurno(
@@ -813,6 +859,15 @@ export class SesionInteractiva {
       this.notificar()
       throw new ErrorBloqueoHook('sessionStart', motivo)
     }
+    this.notificar()
+  }
+
+  /**
+   * Agrega un aviso visible desde fuera de la sesión (por ejemplo, el resultado
+   * de una herramienta que informa una degradación).
+   */
+  public agregarAvisoVisible(texto: string): void {
+    this.agregarAviso(this.limpiar(texto))
     this.notificar()
   }
 
@@ -940,7 +995,7 @@ export class SesionInteractiva {
     try {
       const generador = ejecutarTurno({
         proveedor: this.obtenerProveedorDelTurno(defAgente),
-        registro: this.obtenerRegistroDelTurno(defAgente),
+        registro: await this.obtenerRegistroDelTurno(defAgente),
         mensajes: this.mensajesHistorial,
         sistema: () => this.componerPromptEfectivo(defAgente) || undefined,
         senalCancelacion: this.controllerActivo.signal,

@@ -1,5 +1,5 @@
 export * from './cliente.js'
+export * from './diagnosticos.js'
 export * from './gestor.js'
 export * from './herramienta.js'
 export * from './types.js'
-
