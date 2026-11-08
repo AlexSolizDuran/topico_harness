@@ -19,12 +19,18 @@ Requiere Node.js 24 o superior. Para dejar el comando `harness` disponible en
 cualquier carpeta:
 
 ```bash
-npm install -g ./harness-0.1.0.tgz
+npm install -g topicos-harness-fds
 harness --help
 ```
 
-Ese `.tgz` se genera con `npm pack` y ya incluye el código compilado. Para
-desarrollo dentro del repositorio alcanza con `npm install` y `npm run dev`.
+Para distribuir sin registry, `npm pack` genera un `.tgz` que ya incluye el
+código compilado:
+
+```bash
+npm install -g ./topicos-harness-fds-0.1.0.tgz
+```
+
+Para desarrollo dentro del repositorio alcanza con `npm install` y `npm run dev`.
 
 ## Configuración
 
@@ -96,7 +102,8 @@ completado y `1` para un fallo o un pedido ausente.
 npm run build      # compila a dist/
 npm start          # ejecuta dist/main.js
 npm run link       # construye y enlaza harness globalmente
-npm pack           # construye y genera harness-<version>.tgz instalable
+npm pack           # construye y genera topicos-harness-fds-<version>.tgz
+npm publish        # publica topicos-harness-fds en npm
 ```
 
 ## Calidad

@@ -1,6 +1,6 @@
 {
-  "proveedorPorDefecto": "openrouter",
-  "modeloPorDefecto": "openrouter/free",
+  "proveedorPorDefecto": "groq",
+  "modeloPorDefecto": "openai/gpt-oss-120b",
   "sesiones": {
     "guardar": true,
     "maximo": 50

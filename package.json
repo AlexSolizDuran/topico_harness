@@ -1,7 +1,11 @@
 {
-  "name": "harness",
+  "name": "topicos-harness-fds",
   "version": "0.1.0",
-  "private": true,
+  "description": "Coding agent de terminal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexSolizDuran/topico_harness.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
