@@ -15,6 +15,9 @@ node_modules/
 # Salida de `npm run build`. Se regenera; el binario se publica desde el paquete.
 dist/
 
+# Artefacto de `npm pack`. Se regenera con cada version.
+*.tgz
+
 # Artefactos de vitest. Los resultados de cobertura se regeneran con cada
 # `npm test`, asi que versionarlos solo agrega ruido al diff.
 .vitest/

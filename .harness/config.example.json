@@ -1,0 +1,52 @@
+{
+  "proveedorPorDefecto": "openrouter",
+  "modeloPorDefecto": "openrouter/free",
+  "sesiones": {
+    "guardar": true,
+    "maximo": 50
+  },
+  "proveedores": {
+    "openrouter": {
+      "tipo": "openai-compatible",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "variableApiKey": "OPENROUTER_API_KEY",
+      "cabecerasExtra": {
+        "HTTP-Referer": "https://example.com",
+        "X-Title": "harness"
+      },
+      "modelos": [
+        {
+          "id": "openrouter/free",
+          "soportaHerramientas": true,
+          "ventanaContexto": 200000,
+          "maxTokensSalida": 4096
+        }
+      ]
+    },
+    "groq": {
+      "tipo": "openai-compatible",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "variableApiKey": "GROQ_API_KEY",
+      "modelos": [
+        {
+          "id": "openai/gpt-oss-120b",
+          "soportaHerramientas": true,
+          "ventanaContexto": 131072,
+          "maxTokensSalida": 4096
+        }
+      ]
+    },
+    "ollama": {
+      "tipo": "openai-compatible",
+      "baseUrl": "http://localhost:11434/v1",
+      "modelos": [
+        {
+          "id": "qwen2.5-coder:7b",
+          "soportaHerramientas": true,
+          "ventanaContexto": 32768,
+          "maxTokensSalida": 2048
+        }
+      ]
+    }
+  }
+}

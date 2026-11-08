@@ -15,14 +15,26 @@ La implementación corresponde a los 25 changes archivados en
 
 ## Instalación
 
+Requiere Node.js 24 o superior. Para dejar el comando `harness` disponible en
+cualquier carpeta:
+
 ```bash
-npm install
+npm install -g ./harness-0.1.0.tgz
+harness --help
 ```
+
+Ese `.tgz` se genera con `npm pack` y ya incluye el código compilado. Para
+desarrollo dentro del repositorio alcanza con `npm install` y `npm run dev`.
 
 ## Configuración
 
-El harness lee `.harness/config.json`. Ese archivo está ignorado por git, igual
-que `.env`. El ejemplo versionado es `.harness/config.example.json`.
+El harness lee configuración de dos lugares y la del proyecto pisa a la global:
+
+- Global: `%APPDATA%\harness\config.json` en Windows,
+  `~/.config/harness/config.json` en Linux y macOS. Es la opción cómoda cuando
+  el comando se usa en varios proyectos.
+- Del proyecto: `.harness/config.json`. El ejemplo versionado es
+  `.harness/config.example.json`.
 
 ```bash
 cp .harness/config.example.json .harness/config.json
@@ -32,9 +44,10 @@ cp .env.example .env
 Completá la credencial de una de estas dos formas:
 
 - `variableApiKey`: el nombre de una variable de entorno, por ejemplo
-  `OPENROUTER_API_KEY` en `.env`. Es la vía preferida.
-- `apiKey`: el valor literal, solo en el `.harness/config.json` local ignorado.
-  Nunca lo pongas en el ejemplo ni en un archivo versionado.
+  `OPENROUTER_API_KEY` en `.env`. Es la vía preferida. El harness carga el
+  `.env` del proyecto al arrancar, también cuando se invoca como `harness`.
+- `apiKey`: el valor literal, solo en el config global. El
+  `.harness/config.json` del proyecto se versiona y rechaza `apiKey` literal.
 
 Cada modelo puede declarar `maxTokensSalida`. En OpenRouter conviene fijarlo
 (por ejemplo, `1024`) para que la petición no reserve el máximo del modelo y sea
@@ -83,6 +96,7 @@ completado y `1` para un fallo o un pedido ausente.
 npm run build      # compila a dist/
 npm start          # ejecuta dist/main.js
 npm run link       # construye y enlaza harness globalmente
+npm pack           # construye y genera harness-<version>.tgz instalable
 ```
 
 ## Calidad

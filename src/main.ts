@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { construirHarness } from './app.js'
 import { type Argumentos, AYUDA, parsearArgumentos } from './args.js'
 import {
@@ -25,6 +26,18 @@ function leerEntradaEstandar(): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * El binario instalado no pasa por los scripts de npm, así que el flag
+ * --env-file no aplica. Cargamos el .env del proyecto desde el código para que
+ * la credencial funcione igual con `npm run dev` y con `harness`.
+ */
+function cargarEnvDelProyecto(directorio: string): void {
+  const ruta = join(directorio, '.env')
+  if (!existsSync(ruta)) return
+  // Un .env mal formado debe fallar visiblemente, no dejar una credencial vacía.
+  process.loadEnvFile(ruta)
 }
 
 function prepararSesion(
@@ -123,6 +136,8 @@ async function main(): Promise<number> {
     process.stderr.write(`ERROR: el directorio no existe: ${directorio}\n`)
     return 1
   }
+
+  cargarEnvDelProyecto(directorio)
 
   const pedido =
     args.pedido || (process.stdin.isTTY ? '' : leerEntradaEstandar())
