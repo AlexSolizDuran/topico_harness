@@ -15,64 +15,58 @@ archivados en `openspec/changes/archive/`. El contrato de comportamiento vive en
 
 ## Instalación
 
-Requiere Node.js 24 o superior. Para dejar el comando `harness` disponible en
-cualquier carpeta:
+Requiere Node.js 24 o superior.
 
 ```bash
 npm install -g topicos-harness-fds
 harness --help
 ```
 
-Para distribuir sin registry, `npm pack` genera un `.tgz` que ya incluye el
-código compilado:
-
-```bash
-npm install -g ./topicos-harness-fds-0.1.0.tgz
-```
-
-Para desarrollo dentro del repositorio alcanza con `npm install` y `npm run dev`.
+Para desarrollo dentro del repositorio: `npm install` y `npm run dev`.
 
 ## Configuración
 
-El harness lee configuración de dos lugares y la del proyecto pisa a la global:
+Creá el config global:
 
-- Global: `%APPDATA%\harness\config.json` en Windows,
-  `~/.config/harness/config.json` en Linux y macOS. Es la opción cómoda cuando
-  el comando se usa en varios proyectos.
-- Del proyecto: `.harness/config.json`. El ejemplo versionado es
-  `.harness/config.example.json`.
+- Linux/macOS: `~/.config/harness/config.json`
+- Windows: `%APPDATA%\harness\config.json`
 
-```bash
-cp .harness/config.example.json .harness/config.json
-cp .env.example .env
+```json
+{
+  "proveedorPorDefecto": "openrouter",
+  "modeloPorDefecto": "openai/gpt-4o-mini",
+  "proveedores": {
+    "openrouter": {
+      "tipo": "openai-compatible",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "PONER_API_KEY",
+      "modelos": [
+        {
+          "id": "openai/gpt-4o-mini",
+          "soportaHerramientas": true,
+          "ventanaContexto": 128000,
+          "maxTokensSalida": 4096
+        }
+      ]
+    }
+  }
+}
 ```
 
-Completá la credencial de una de estas dos formas:
+Reemplazá `PONER_API_KEY` por tu clave y protegé el archivo:
 
-- `variableApiKey`: el nombre de una variable de entorno, por ejemplo
-  `OPENROUTER_API_KEY` en `.env`. Es la vía preferida. El harness carga el
-  `.env` del proyecto al arrancar, también cuando se invoca como `harness`.
-- `apiKey`: el valor literal, solo en el config global. El
-  `.harness/config.json` del proyecto se versiona y rechaza `apiKey` literal.
+```bash
+chmod 600 ~/.config/harness/config.json
+```
 
-Cada modelo puede declarar `maxTokensSalida`. En OpenRouter conviene fijarlo
-(por ejemplo, `1024`) para que la petición no reserve el máximo del modelo y sea
-rechazada por crédito.
-
-`config.json` también admite las claves de las capacidades integradas:
-
-- `sandbox`: aislamiento del sistema operativo para `shell` (`habilitado`,
-  `mecanismoForzado`). Si el mecanismo no existe, la ejecución degrada y `shell`
-  lo informa; nunca se presenta como aislada.
-- `memoria`: memoria del proyecto al arrancar y extracción al cerrar
-  (`usuario`, `modelo`, `rutaUsuario`).
-- `lsp`: servidores de lenguaje por `lenguaje`, `comando` y `raiz`. La herramienta
-  `lsp` y los diagnósticos posteriores a una edición quedan disponibles.
-- `mcp`: servidores MCP por `id` y `comando`, con `env` como lista de nombres de
-  variables. Un agente solo ve los servidores que declara en `mcp` dentro de
-  `.harness/agents.json`.
+`apiKey` literal solo se acepta en el config global. Si preferís no guardar la
+clave en el JSON, usá `variableApiKey` y definí la variable en `.env` o en el
+entorno. El config del proyecto (`.harness/config.json`) pisa al global. El
+ejemplo completo está en `.harness/config.example.json`.
 
 ## Uso
+
+Con la instalación global, reemplazá `npm run dev --` por `harness`.
 
 ```bash
 # Pedido directo: corre el turno y termina
@@ -132,7 +126,8 @@ contrato, incluidos LSP y MCP.
 
 ## Seguridad
 
-- No commitees `.harness/config.json` ni `.env`.
+- No commitees `.harness/config.json` ni `.env`. El config global con `apiKey`
+  literal vive fuera del repo.
 - Leer o escribir `.env`, `.env.*` o una ruta dentro de `.harness/` pide
   aprobación obligatoria; `.env.example` queda exceptuado.
 - Los errores y resultados se sanean para redactar la credencial.
